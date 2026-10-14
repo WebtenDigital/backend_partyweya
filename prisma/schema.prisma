@@ -1,0 +1,231 @@
+// PartyWeya Supply Register — Prisma schema
+//
+// Implements PartyWeya_Supply_Register_and_Call_Protocol.md Part 1, with one
+// addition: Residency. See the chat notes for why it earns its place.
+//
+// NOTE ON NAMING: Prisma generates PascalCase tables and camelCase columns.
+// If you want idiomatic snake_case in Postgres (easier to read in the Supabase
+// dashboard and in raw SQL), add @@map / @map directives, or keep these names
+// and quote identifiers in any hand-written SQL.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  CONTROLLED VOCABULARIES
+//  These are closed sets the content system depends on not drifting.
+//  As enums, a mislabel is impossible rather than merely discouraged.
+// ─────────────────────────────────────────────────────────────────────
+
+enum Register {
+  CHILL
+  SOCIAL
+  HIGH_ENERGY
+}
+
+enum ClaimType {
+  VETTED // PartyWeya attended and judged — the only one that licenses "best"
+  TRANSFERRED // known act/venue/organiser with an independent track record
+  FACTUAL // announced and real — licenses "this is happening", nothing more
+}
+
+enum OccurrenceStatus {
+  LEAD // found in the weekly scan; nothing verified yet
+  CONFIRMED // time and price verified; publishable
+  CHANGED // was confirmed, details have moved — re-verify before use
+  CANCELLED
+}
+
+enum Category {
+  LIVE_BAND
+  DJ
+  KARAOKE
+  QUIZ
+  ACOUSTIC
+  POETRY
+  COMEDY
+  BRUNCH
+  PAGEANT
+  CONCERT
+  OTHER
+}
+
+enum ConversationTest {
+  CAN_TALK //          → CHILL
+  ONLY_AT_THE_EDGES // → SOCIAL
+  NO //                → HIGH_ENERGY
+}
+
+enum ContactRole {
+  MANAGER
+  MARKETING
+  PROMOTER
+  OWNER
+  HOST
+}
+
+enum Recurrence {
+  WEEKLY
+  MONTHLY
+  SEASONAL
+}
+
+enum PostType {
+  ROUND_UP
+  CAROUSEL_CUT
+  MOOD_MENU
+  MID_WEEK
+  LAST_MINUTE
+  DISCOVERY
+  ZONE_ZOOM_IN
+  MOOD_PICK
+  HIGHLIGHT
+  STORY
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  VENUE — durable. This is the asset that compounds.
+// ─────────────────────────────────────────────────────────────────────
+
+model Venue {
+  id   String @id @default(cuid())
+  name String @unique // exactly as the venue brands itself (feeds the venue tag)
+  slug String @unique // for website URLs
+
+  zone String // the 7-zone map, or "Outside Kampala"
+  area String // colloquial landmark: Bugolobi, Nakulabye, Kansanga
+
+  // ── everything above is public-safe. everything below is internal only. ──
+
+  contactName     String?
+  contactRole     ContactRole?
+  phone           String?
+  whatsapp        Boolean      @default(false)
+  bestTimeToReach String? // nightlife staff are not morning people
+
+  conversationTest    ConversationTest? // the call script's register diagnostic
+  provisionalRegister Register? //         derived from conversationTest
+
+  lastAttended DateTime? // null = PartyWeya has never been
+  clearsF2     Boolean? //  null = unknown, which is the honest default
+  paidClient   Boolean   @default(false) // keeps concentration visible (Rule 6)
+
+  lastContacted  DateTime?
+  nextContactDue DateTime? // set by the cadence tier
+  notes          String?
+
+  residencies Residency[]
+  occurrences Occurrence[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([zone])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  RESIDENCY — the recurring rule. One row, indefinitely.
+//  Without this you insert ~30 rows a week by hand and the process dies.
+//  Monthly confirmation touches one row, which is exactly the standing-roster
+//  tier in the call protocol's Part 2.
+// ─────────────────────────────────────────────────────────────────────
+
+model Residency {
+  id      String @id @default(cuid())
+  venue   Venue  @relation(fields: [venueId], references: [id])
+  venueId String
+
+  eventName String
+  category  Category
+  dayOfWeek Int // 1 = Monday … 7 = Sunday
+  startTime String // "19:00" — local wall-clock, no timezone arithmetic
+  endTime   String?
+
+  costGate    Int?
+  costAdvance Int?
+  register    Register
+
+  recurrence   Recurrence @default(WEEKLY)
+  runningSince DateTime? // the durability signal: a year beats a month
+  active       Boolean    @default(true)
+
+  lastConfirmed DateTime? // drives the monthly sweep
+
+  occurrences Occurrence[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([dayOfWeek, active])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  OCCURRENCE — a dated instance. One-offs, and overrides of a residency.
+//  A residency generates its weeks in application code; an Occurrence row
+//  only exists here when something is one-off, cancelled, or different
+//  from the standing rule that week.
+// ─────────────────────────────────────────────────────────────────────
+
+model Occurrence {
+  id   String   @id @default(cuid())
+  date DateTime @db.Date
+
+  venue   Venue  @relation(fields: [venueId], references: [id])
+  venueId String
+
+  residency   Residency? @relation(fields: [residencyId], references: [id])
+  residencyId String? // set = this row overrides a residency for this date
+
+  eventName String
+  category  Category
+
+  startTime String? // nullable while LEAD; the public view requires it
+  endTime   String?
+
+  costGate    Int?
+  costAdvance Int?
+  lineup      String? // named acts — feeds the transferred claim
+  register    Register?
+
+  claimType ClaimType? // what PartyWeya is allowed to say about this row
+  source    String? //    "called venue" | "flyer" | "audience suggestion" | …
+
+  status      OccurrenceStatus @default(LEAD)
+  confirmedOn DateTime?
+  confirmedBy String? // accountability when a published fact turns out wrong
+
+  publications Publication[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([venueId, date, eventName])
+  @@index([date, status])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  PUBLICATION — where an entry actually travelled.
+//  The substrate Rule F7 (measurement) needs to answer "which entries
+//  pulled people through", which nothing currently records.
+//  Optional for v1; cheap to add now, annoying to backfill later.
+// ─────────────────────────────────────────────────────────────────────
+
+model Publication {
+  id           String     @id @default(cuid())
+  occurrence   Occurrence @relation(fields: [occurrenceId], references: [id])
+  occurrenceId String
+
+  postType PostType
+  platform String // instagram | tiktok | snapchat
+  postedAt DateTime
+  postUrl  String?
+
+  @@index([postedAt])
+  @@index([postType])
+}
