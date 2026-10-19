@@ -54,3 +54,11 @@ npm run build
 You can preview the production build with `npm run preview`.
 
 > To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+
+## Fonts
+
+The sans is **TT Firs Neue** (TypeType), self-hosted from `static/fonts/tt-firs-neue-var.woff2`.
+That folder is not in git: the font is licensed, and the trial build may only be used for
+testing. Put the licensed variable font (weights 100–900) at that path as woff2 before
+deploying; without it, pages fall back to the system sans. Mono is IBM Plex Mono from
+Google Fonts.

@@ -1,7 +1,17 @@
 @import 'tailwindcss';
 
+/* TT Firs Neue (TypeType). The file in static/fonts is not in git: the font is
+   licensed per use. Without it, pages fall back to the system sans. */
+@font-face {
+	font-family: 'TT Firs Neue';
+	src: url('/fonts/tt-firs-neue-var.woff2') format('woff2');
+	font-weight: 100 900;
+	font-style: normal;
+	font-display: swap;
+}
+
 @theme {
-	--font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+	--font-sans: 'TT Firs Neue', ui-sans-serif, system-ui, sans-serif;
 	--font-mono: 'IBM Plex Mono', ui-monospace, monospace;
 
 	--color-ink: #131315;
