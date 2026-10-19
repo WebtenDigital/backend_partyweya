@@ -153,7 +153,7 @@
 			</section>
 
 			<section class="panel space-y-3">
-				<h2 class="flex items-center gap-2 font-semibold">The act <span class="rounded-full border border-chill/50 px-2 py-px font-mono text-[9px] tracking-wider text-chill">NEW FIELD</span></h2>
+				<h2 class="flex items-center gap-2 font-semibold">The act</h2>
 				<p class="text-xs text-dim">
 					A resident act is as stable as the start time, so it lives on the rule. Only name a week’s act in an override when
 					knowing it changes what you’d write.
@@ -180,7 +180,7 @@
 			</section>
 
 			<section id="offers" class="panel scroll-mt-4 space-y-3">
-				<h2 class="flex items-center gap-2 font-semibold">What else is on that night <span class="rounded-full border border-chill/50 px-2 py-px font-mono text-[9px] tracking-wider text-chill">NEW</span></h2>
+				<h2 class="flex items-center gap-2 font-semibold">What else is on that night</h2>
 				<p class="text-xs text-dim">
 					Offers go stale faster than anything else here, and a wrong one costs more than a missing one. Each gets its own
 					expiry so a dead promo drops out instead of quietly outliving its truth.
