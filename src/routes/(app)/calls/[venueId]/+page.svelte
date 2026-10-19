@@ -1,6 +1,7 @@
 <script lang="ts">
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
 	import { enhance } from '$app/forms';
+	import PerksEditor from '#lib/components/PerksEditor.svelte';
 	import { CADENCE, Q6 } from '#lib/build/calls.js';
 	import { shortDate } from '#lib/build/week.js';
 	import type { PageProps } from './$types';
@@ -151,6 +152,10 @@
 								<label class="field"><span>Wraps</span><input name="s_end" class="input" placeholder="02:00" value={residency?.endTime ?? ''} /></label>
 								<label class="field"><span>At the gate</span><input name="s_gate" class="input" inputmode="numeric" placeholder="20000" value={residency?.priceGate ?? ''} /></label>
 							</div>
+						<div class="space-y-2 border-t border-line pt-3">
+							<p class="text-sm">“Anything on for drinks or food that night?”</p>
+							<PerksEditor perks={residency?.perks ?? []} today={data.today} />
+						</div>
 						{/key}
 					{/if}
 				{:else if mode === 'dated'}
@@ -187,6 +192,10 @@
 								</select>
 							</label>
 							<label class="field col-span-2 sm:col-span-4"><span>Who’s playing</span><input name="d_lineup" class="input" bind:value={lineup} placeholder="Named acts — the basis of a TRANSFERRED claim" /></label>
+						</div>
+						<div class="space-y-2 border-t border-line pt-3">
+							<p class="text-sm">“Anything on for drinks or food that night?”</p>
+							<PerksEditor perks={occurrence?.perks ?? []} today={data.today} />
 						</div>
 					{/key}
 				{/if}

@@ -205,7 +205,7 @@
 				>
 					<input type="hidden" name="id" value={r.id} />
 					<input type="hidden" name="updatedAt" value={r.updatedAt} />
-					<span class="col-span-2 font-semibold md:col-span-1">{r.name}</span>
+					<a href="/venues/{r.id}" class="col-span-2 font-semibold hover:text-chill md:col-span-1" tabindex="-1">{r.name}</a>
 					<select
 						name="zoneName"
 						class="input h-11 font-mono text-xs {r.zoneName ? '' : 'text-social'}"

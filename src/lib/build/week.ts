@@ -18,7 +18,7 @@ export interface PerkIn {
 	sortOrder: number;
 }
 
-export type Perk = Pick<PerkIn, 'kind' | 'label' | 'condition'>;
+export type Perk = Pick<PerkIn, 'kind' | 'label' | 'condition' | 'activeUntil'>;
 
 /**
  * The offers a row carries: a dated row's own perks replace the standing
@@ -30,7 +30,7 @@ export function resolvePerks(date: string, own: PerkIn[] | null, rule: PerkIn[])
 	return source
 		.filter((p) => p.activeUntil == null || p.activeUntil >= date)
 		.sort((a, b) => a.sortOrder - b.sortOrder)
-		.map(({ kind, label, condition }) => ({ kind, label, condition }));
+		.map(({ kind, label, condition, activeUntil }) => ({ kind, label, condition, activeUntil }));
 }
 
 export interface VenueIn {
@@ -353,3 +353,11 @@ export function shillings(n: number | null) {
 
 export const maskPhone = (phone: string | null) =>
 	phone ? `${phone.replace(/\s+/g, '').slice(0, 4)} ···` : 'no number';
+
+/** Rule F5: how old the last confirmation behind an open-ended offer is. */
+export function offerStaleness(lastConfirmed: string | null, today: string) {
+	if (!lastConfirmed) return 'Offers never confirmed — check they still run before they publish.';
+	const days = daysBetween(lastConfirmed, today);
+	const age = days < 14 ? `${days} day${days === 1 ? '' : 's'}` : `${Math.round(days / 7)} weeks`;
+	return days < 14 ? null : `Offers last confirmed ${age} ago — check they still run before they publish.`;
+}

@@ -182,7 +182,7 @@
 							>
 								<div class="col-span-2 min-w-0 md:col-span-1">
 									<p class="flex flex-wrap items-center gap-2">
-										<span class="font-semibold">{r.eventName}</span>
+										<a href={r.kind === 'STANDING' ? `/residencies/${r.key.split('|')[0]}` : `/occurrences/${r.key}`} class="font-semibold hover:underline">{r.eventName}</a>
 										<span
 											class="rounded border px-1.5 py-px font-mono text-[10px] tracking-wider
 												{r.kind === 'STANDING' ? 'border-line text-dim' : 'border-dated/60 text-dated'}"
@@ -196,8 +196,12 @@
 									{#if r.perks.length}
 										<div class="mt-1 flex flex-wrap gap-1">
 											{#each r.perks as p, i (i)}
-												<span class="rounded border border-vetted/40 px-1.5 py-px font-mono text-[10px] text-vetted">
-													{p.kind} · {p.label}{p.condition ? ` · ${p.condition}` : ''}
+												{@const ending = p.activeUntil != null && p.activeUntil <= data.weekEnd}
+												<span
+													class="rounded border px-1.5 py-px font-mono text-[10px] {ending ? 'border-line text-dim' : 'border-vetted/40 text-vetted'}"
+													title={ending ? 'Ends this week — check before it publishes' : ''}
+												>
+													{p.kind} · {p.label}{p.condition ? ` · ${p.condition}` : ''}{ending ? ` · ends ${dayHeading(p.activeUntil!).toLowerCase()}` : ''}
 												</span>
 											{/each}
 										</div>

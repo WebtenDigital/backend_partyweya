@@ -10,9 +10,18 @@ import {
 } from '#lib/server/prisma.js';
 import { asDate, isWeek, isoDate, kampalaDate } from '#lib/server/register.js';
 import { CADENCE, Q6 } from '#lib/build/calls.js';
+import { savePerks } from '#lib/server/perks.js';
 import { Invalid, failureMessage, money, oneOf, phone, slug, text, time } from '#lib/server/forms.js';
 import { kampalaToday, nextMonday } from '#lib/build/week.js';
 import type { Actions, PageServerLoad } from './$types';
+
+const editablePerk = (p: { id: string; kind: string; label: string; condition: string | null; activeUntil: Date | null }) => ({
+	id: p.id,
+	kind: p.kind,
+	label: p.label,
+	condition: p.condition,
+	activeUntil: kampalaDate(p.activeUntil)
+});
 
 export const load: PageServerLoad = async ({ params, url }) => {
 	const today = kampalaToday();
@@ -20,11 +29,15 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		where: { id: params.venueId },
 		include: {
 			zone: true,
-			residencies: { where: { active: true }, orderBy: { dayOfWeek: 'asc' }, include: { organiser: { select: { name: true, contactName: true, phone: true, whatsapp: true } } } },
+			residencies: {
+				where: { active: true },
+				orderBy: { dayOfWeek: 'asc' },
+				include: { organiser: { select: { name: true, contactName: true, phone: true, whatsapp: true } }, perks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] } }
+			},
 			occurrences: {
 				where: { date: { gte: asDate(today) }, status: { not: 'CANCELLED' } },
 				orderBy: { date: 'asc' },
-				include: { organiser: { select: { name: true, contactName: true, phone: true, whatsapp: true } } }
+				include: { organiser: { select: { name: true, contactName: true, phone: true, whatsapp: true } }, perks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] } }
 			}
 		}
 	});
@@ -65,7 +78,8 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			priceGate: r.priceGate,
 			register: r.register,
 			lastConfirmed: kampalaDate(r.lastConfirmed),
-			organiser: r.organiser
+			organiser: r.organiser,
+			perks: r.perks.map(editablePerk)
 		})),
 		occurrences: venue.occurrences.map((o) => ({
 			id: o.id,
@@ -80,7 +94,8 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			lineup: o.lineup,
 			register: o.register,
 			status: o.status,
-			organiser: o.organiser
+			organiser: o.organiser,
+			perks: o.perks.map(editablePerk)
 		})),
 		// Where the queue sent this call.
 		mode: occurrenceId ? 'dated' : residencyId ? 'standing' : 'none',
@@ -175,6 +190,7 @@ export const actions: Actions = {
 							...confirmed
 						}
 					});
+					await savePerks(tx, { residencyId: id }, f);
 				}
 
 				if (mode === 'dated') {
@@ -204,11 +220,13 @@ export const actions: Actions = {
 					const existing = text(f, 'occurrenceId');
 					if (existing && existing !== 'new') {
 						await tx.occurrence.update({ where: { id: existing, venueId: venue.id }, data: fields });
+						await savePerks(tx, { occurrenceId: existing }, f);
 					} else {
 						// Readable ids, like the sheet's: the-silo-daycation-2026-10-25
 						let id = `${slug(eventName)}-${date}`;
 						if (await tx.occurrence.findUnique({ where: { id } })) id = `${venue.id}-${id}`;
 						await tx.occurrence.create({ data: { id, venueId: venue.id, ...fields } });
+						await savePerks(tx, { occurrenceId: id }, f);
 					}
 				}
 			});
