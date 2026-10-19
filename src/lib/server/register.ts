@@ -8,6 +8,7 @@ import {
 	isMonday,
 	kampalaToday,
 	type OccurrenceIn,
+	type PerkIn,
 	type Register,
 	type ResidencyIn,
 	type VenueIn
@@ -20,6 +21,14 @@ export const asDate = (day: string) => new Date(`${day}T00:00:00Z`);
 
 export const isWeek = (week: string | null): week is string =>
 	!!week && /^\d{4}-\d{2}-\d{2}$/.test(week) && isMonday(week);
+
+const perkIn = (p: {
+	kind: string;
+	label: string;
+	condition: string | null;
+	activeUntil: Date | null;
+	sortOrder: number;
+}): PerkIn => ({ ...p, activeUntil: kampalaDate(p.activeUntil) });
 
 type VenueRow = {
 	id: string;
@@ -41,11 +50,11 @@ export async function loadWeek(week: string) {
 	const [residencies, occurrences] = await Promise.all([
 		prisma.residency.findMany({
 			where: { active: true },
-			include: { venue: { include: { zone: true } } }
+			include: { venue: { include: { zone: true } }, perks: true }
 		}),
 		prisma.occurrence.findMany({
 			where: { date: { gte: asDate(week), lte: asDate(weekEnd) } },
-			include: { venue: { include: { zone: true } } }
+			include: { venue: { include: { zone: true } }, perks: true }
 		})
 	]);
 
@@ -64,7 +73,9 @@ export async function loadWeek(week: string) {
 				recurrence: r.recurrence,
 				claimType: r.claimType,
 				source: r.source,
-				lastConfirmed: kampalaDate(r.lastConfirmed)
+				lastConfirmed: kampalaDate(r.lastConfirmed),
+				lineup: r.lineup,
+				perks: r.perks.map(perkIn)
 			})
 		),
 		occurrences.map(
@@ -82,7 +93,9 @@ export async function loadWeek(week: string) {
 				claimType: o.claimType,
 				source: o.source,
 				status: o.status,
-				confirmedOn: kampalaDate(o.confirmedOn)
+				confirmedOn: kampalaDate(o.confirmedOn),
+				lineup: o.lineup,
+				perks: o.perks.map(perkIn)
 			})
 		)
 	);

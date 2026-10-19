@@ -96,13 +96,21 @@
 						<span class="text-dim">{g.rows.length}</span>
 					</div>
 					<div class="space-y-2">
-						{#each g.rows as row (row.venue.id)}
+						{#each g.rows as row (row.key)}
 							{@const href = `/calls/${row.venue.id}${row.items[0].href}&week=${data.week}`}
 							<div
 								class="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 rounded-md border border-l-4 border-line bg-panel px-4 py-3 text-sm hover:border-dim sm:grid-cols-[minmax(0,1fr)_150px_190px_60px] sm:items-center {EDGE[g.key]}"
 							>
 								<a {href} class="min-w-0">
-									<p class="font-semibold hover:underline">{row.venue.name}</p>
+									{#if row.organiser}
+										<p class="font-semibold hover:underline">
+											Call {row.organiser.contactName ?? row.organiser.name}
+											<span class="font-mono text-[10px] tracking-wider text-dated">ORGANISER{row.organiser.contactName ? ` · ${row.organiser.name}` : ''}</span>
+										</p>
+										<p class="text-xs text-social">not {row.venue.name} — it’s their night, so they’re the ones who know</p>
+									{:else}
+										<p class="font-semibold hover:underline">{row.venue.name}</p>
+									{/if}
 									{#each row.items as item (item.text)}
 										<p class="text-xs text-dim">{item.text}</p>
 									{/each}
@@ -110,6 +118,11 @@
 								<span class="font-mono text-[10px] tracking-wider {row.venue.zone ? 'text-dim' : 'text-social'}">
 									{row.venue.zone ?? 'NO ZONE'}
 								</span>
+								{#if row.organiser}
+									<span class="col-span-2 font-mono text-xs sm:col-span-1 {row.organiser.phone ? 'text-fg' : 'text-social'}">
+										{row.organiser.phone ?? 'no number'}{row.organiser.whatsapp ? ' · WhatsApp' : ''}
+									</span>
+								{:else}
 								<!-- A number found by desk research saves here; it is not a call. -->
 								<form
 									method="POST"
@@ -137,6 +150,7 @@
 									/>
 									{#if phoneErrors[row.venue.id]}<p class="mt-1 text-[11px] text-energy">{phoneErrors[row.venue.id]}</p>{/if}
 								</form>
+								{/if}
 								<a {href} class="font-mono text-[10px] tracking-wider text-chill">{row.askQ6 ? 'ASK Q6' : ''}</a>
 							</div>
 						{/each}

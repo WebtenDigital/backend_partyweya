@@ -30,12 +30,19 @@ export const load: PageServerLoad = async ({ url }) => {
 		select: { id: true, name: true, phone: true, conversationTest: true, zoneName: true, updatedAt: true }
 	});
 
+	const organiserIds = [...new Set([...residencies, ...occurrences].map((x) => x.organiserId).filter((x): x is string => !!x))];
+	const organisers = await prisma.organiser.findMany({
+		where: { id: { in: organiserIds } },
+		select: { id: true, name: true, contactName: true, phone: true, whatsapp: true }
+	});
+
 	const queue = callQueue(
 		week,
 		venues.map((v) => ({ ...v, zone: v.zoneName, updatedAt: v.updatedAt.toISOString() })),
 		residencies.map((r) => ({
 			id: r.id,
 			venueId: r.venueId,
+			organiserId: r.organiserId,
 			eventName: r.eventName,
 			category: r.category,
 			dayOfWeek: r.dayOfWeek,
@@ -45,13 +52,15 @@ export const load: PageServerLoad = async ({ url }) => {
 		occurrences.map((o) => ({
 			id: o.id,
 			venueId: o.venueId,
+			organiserId: o.organiserId,
 			date: isoDate(o.date),
 			eventName: o.eventName,
 			startTime: o.startTime,
 			priceGate: o.priceGate,
 			register: o.register,
 			status: o.status
-		}))
+		})),
+		organisers
 	);
 
 	return { week, today, queue, gate, register: { venues: venueCount, numbers } };

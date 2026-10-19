@@ -20,10 +20,11 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		where: { id: params.venueId },
 		include: {
 			zone: true,
-			residencies: { where: { active: true }, orderBy: { dayOfWeek: 'asc' } },
+			residencies: { where: { active: true }, orderBy: { dayOfWeek: 'asc' }, include: { organiser: { select: { name: true, contactName: true, phone: true, whatsapp: true } } } },
 			occurrences: {
 				where: { date: { gte: asDate(today) }, status: { not: 'CANCELLED' } },
-				orderBy: { date: 'asc' }
+				orderBy: { date: 'asc' },
+				include: { organiser: { select: { name: true, contactName: true, phone: true, whatsapp: true } } }
 			}
 		}
 	});
@@ -63,7 +64,8 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			endTime: r.endTime,
 			priceGate: r.priceGate,
 			register: r.register,
-			lastConfirmed: kampalaDate(r.lastConfirmed)
+			lastConfirmed: kampalaDate(r.lastConfirmed),
+			organiser: r.organiser
 		})),
 		occurrences: venue.occurrences.map((o) => ({
 			id: o.id,
@@ -77,7 +79,8 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			priceNote: o.priceNote,
 			lineup: o.lineup,
 			register: o.register,
-			status: o.status
+			status: o.status,
+			organiser: o.organiser
 		})),
 		// Where the queue sent this call.
 		mode: occurrenceId ? 'dated' : residencyId ? 'standing' : 'none',

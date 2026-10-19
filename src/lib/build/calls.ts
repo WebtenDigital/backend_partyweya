@@ -22,9 +22,18 @@ export interface QueueVenue {
 	updatedAt?: string; // for the queue's inline phone save
 }
 
+export interface QueueOrganiser {
+	id: string;
+	name: string;
+	contactName: string | null;
+	phone: string | null;
+	whatsapp: boolean;
+}
+
 export interface QueueResidency {
 	id: string;
 	venueId: string;
+	organiserId: string | null;
 	eventName: string;
 	category: string;
 	dayOfWeek: number;
@@ -35,6 +44,7 @@ export interface QueueResidency {
 export interface QueueOccurrence {
 	id: string;
 	venueId: string;
+	organiserId: string | null;
 	date: string;
 	eventName: string;
 	startTime: string | null;
@@ -49,7 +59,12 @@ export interface QueueItem {
 }
 
 export interface QueueRow {
+	key: string;
 	venue: QueueVenue;
+	// Who owns the fact: a promoter's night is asked of the promoter, not the venue —
+	// a manager's “I think so?” would be recorded as confirmation.
+	callWho: 'venue' | 'organiser';
+	organiser: QueueOrganiser | null;
 	group: GroupKey;
 	items: QueueItem[];
 	askQ6: boolean;
@@ -75,31 +90,44 @@ export function callQueue(
 	weekStart: string,
 	venues: QueueVenue[],
 	residencies: QueueResidency[],
-	occurrences: QueueOccurrence[] // non-cancelled, from today to the end of the build week
+	occurrences: QueueOccurrence[], // non-cancelled, from today to the end of the build week
+	organisers: QueueOrganiser[] = []
 ): QueueRow[] {
 	const byId = new Map(venues.map((v) => [v.id, v]));
+	const orgs = new Map(organisers.map((o) => [o.id, o]));
 	const rows = new Map<string, QueueRow>();
 	const rank: Record<GroupKey, number> = { 'this-week': 0, 'every-week': 1, sweep: 2, unclassified: 3 };
 
-	const add = (venueId: string, group: GroupKey, item: QueueItem) => {
+	const add = (venueId: string, group: GroupKey, item: QueueItem, organiserId: string | null = null) => {
 		const venue = byId.get(venueId);
 		if (!venue) return;
-		const row = rows.get(venueId) ?? { venue, group, items: [], askQ6: !venue.conversationTest };
+		const organiser = organiserId ? (orgs.get(organiserId) ?? null) : null;
+		const key = organiser ? `${organiser.id}@${venueId}` : venueId;
+		const row = rows.get(key) ?? {
+			key,
+			venue,
+			callWho: organiser ? ('organiser' as const) : ('venue' as const),
+			organiser,
+			group,
+			items: [],
+			// Question 6 is about the room, so it's asked of the venue.
+			askQ6: !organiser && !venue.conversationTest
+		};
 		if (rank[group] < rank[row.group]) row.group = group;
 		row.items.push(item);
-		rows.set(venueId, row);
+		rows.set(key, row);
 	};
 
 	for (const o of occurrences) {
 		const why = blockers(o);
-		if (why) add(o.venueId, 'this-week', { text: `${o.eventName} · ${why} · ${dayLabel(o.date)}`, href: `?occurrence=${o.id}` });
+		if (why) add(o.venueId, 'this-week', { text: `${o.eventName} · ${why} · ${dayLabel(o.date)}`, href: `?occurrence=${o.id}` }, o.organiserId);
 	}
 	for (const r of residencies) {
 		if (!r.startTime) {
-			add(r.venueId, 'every-week', { text: `${r.eventName} · no start time · ${DOW[r.dayOfWeek]}`, href: `?residency=${r.id}` });
+			add(r.venueId, 'every-week', { text: `${r.eventName} · no start time · ${DOW[r.dayOfWeek]}`, href: `?residency=${r.id}` }, r.organiserId);
 		} else if (!r.lastConfirmed || daysBetween(r.lastConfirmed, weekStart) > SWEEP_DAYS) {
 			const when = r.lastConfirmed ? `last confirmed ${shortDate(r.lastConfirmed)}` : 'never confirmed';
-			add(r.venueId, 'sweep', { text: `${r.eventName} · ${when}`, href: `?residency=${r.id}` });
+			add(r.venueId, 'sweep', { text: `${r.eventName} · ${when}`, href: `?residency=${r.id}` }, r.organiserId);
 		}
 	}
 	// Venues already in the book for a standing night but never asked question 6.

@@ -100,6 +100,13 @@ enum Recurrence {
   SEASONAL
 }
 
+enum PerkKind {
+  DRINK
+  FOOD
+  ENTRY
+  OTHER
+}
+
 enum PostType {
   ROUND_UP
   CAROUSEL_CUT
@@ -164,6 +171,11 @@ model Venue {
   lastAttended DateTime? // null = PartyWeya has never been. The basis of VETTED.
   clearsF2     Boolean? //  null = unknown, which is the honest default
   paidClient   Boolean   @default(false) // keeps concentration visible (Rule 6)
+
+  // Facts that don't change by night: would it differ on their Tuesday and their Saturday?
+  dressCode   String?
+  parkingNote String?
+  hasFood     Boolean?
 
   lastContacted  DateTime?
   nextContactDue DateTime? // set by the cadence tier — drives "who is due this week"
@@ -243,9 +255,11 @@ model Residency {
   lastConfirmed DateTime? // drives the monthly sweep
   claimType     ClaimType? // what PartyWeya may say about the standing night
   source        Source? //    who confirmed it; only ATTENDED can carry VETTED
-  notes         String?
+  notes         String? // internal — never public
+  lineup        String? // the resident act: "The Clan Band" — public, like the start time
 
   occurrences Occurrence[]
+  perks       Perk[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -297,6 +311,7 @@ model Occurrence {
   confirmedBy String? //  accountability when a published fact turns out wrong
 
   publications Publication[]
+  perks        Perk[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -325,4 +340,29 @@ model Publication {
 
   @@index([postedAt])
   @@index([postType])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  PERK — an offer on a standing night or a dated one (exactly one of the
+//  two; enforced by a CHECK in SQL). A table, not a text field, because
+//  offers go stale fastest and a wrong one costs more than a missing one:
+//  activeUntil lets a seasonal promo expire itself.
+// ─────────────────────────────────────────────────────────────────────
+
+model Perk {
+  id           String      @id @default(cuid())
+  residency    Residency?  @relation(fields: [residencyId], references: [id], onDelete: Cascade)
+  residencyId  String?
+  occurrence   Occurrence? @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
+  occurrenceId String?
+  kind         PerkKind
+  label        String //    "Half-price cocktails"
+  condition    String? //   "before 9pm"
+  activeUntil  DateTime? // last day it holds; null = until told otherwise
+  sortOrder    Int         @default(0)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @default(now()) @updatedAt
+
+  @@index([residencyId])
+  @@index([occurrenceId])
 }

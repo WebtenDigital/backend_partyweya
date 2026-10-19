@@ -36,6 +36,8 @@
 
 	const residency = $derived(data.residencies.find((r) => r.id === residencyId));
 	const occurrence = $derived(data.occurrences.find((o) => o.id === occurrenceId));
+	// The night being logged belongs to an organiser: they're who to ask, not the venue.
+	const organiser = $derived(mode === 'standing' ? residency?.organiser : mode === 'dated' ? occurrence?.organiser : null);
 	const transferredOk = $derived(mode === 'dated' && lineup.trim().length > 0);
 	$effect(() => {
 		if (!transferredOk && claimType === 'TRANSFERRED') claimType = 'FACTUAL';
@@ -102,6 +104,14 @@
 
 	<div class="grid gap-6 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_300px]">
 		<main class="min-w-0 space-y-4">
+			{#if organiser}
+				<p class="rounded-md border border-dated/50 bg-dated/10 px-4 py-3 text-sm">
+					<span class="font-mono text-[10px] tracking-wider text-dated">ORGANISER’S NIGHT</span><br />
+					Call <strong>{organiser.contactName ?? organiser.name}</strong>{organiser.contactName ? ` (${organiser.name})` : ''}
+					{organiser.phone ? `on ${organiser.phone}` : '— no number on file yet'}, not {data.venue.name}. Asking the venue
+					about a promoter’s night gets “I think so?”, which would be logged as confirmation.
+				</p>
+			{/if}
 			<blockquote class="panel border-l-4 border-l-line">
 				“Hi, is this {data.venue.contactName ?? '[name]'}? I’m {data.caller} from PartyWeya — we cover what’s happening
 				around Kampala nightlife, and <strong>listings are free</strong>. I’m putting this week together and I want to get

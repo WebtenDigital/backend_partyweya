@@ -192,6 +192,16 @@
 									</p>
 									<p class="mt-0.5 text-fg/70">{r.venue.name}</p>
 									<p class="font-mono text-[10px] tracking-wider text-dim">{r.venue.zone ?? 'UNZONED'}</p>
+									{#if r.lineup}<p class="mt-1 text-xs text-fg/80">{r.lineup}</p>{/if}
+									{#if r.perks.length}
+										<div class="mt-1 flex flex-wrap gap-1">
+											{#each r.perks as p, i (i)}
+												<span class="rounded border border-vetted/40 px-1.5 py-px font-mono text-[10px] text-vetted">
+													{p.kind} · {p.label}{p.condition ? ` · ${p.condition}` : ''}
+												</span>
+											{/each}
+										</div>
+									{/if}
 								</div>
 
 								<div class="font-mono">

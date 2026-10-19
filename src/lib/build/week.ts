@@ -10,6 +10,29 @@ export const F5_WINDOW_DAYS = 28;
 // A standing night stays confirmed for one monthly sweep after its last call.
 export const SWEEP_DAYS = 35;
 
+export interface PerkIn {
+	kind: string;
+	label: string;
+	condition: string | null;
+	activeUntil: string | null; // YYYY-MM-DD, the last day it holds; null = until told otherwise
+	sortOrder: number;
+}
+
+export type Perk = Pick<PerkIn, 'kind' | 'label' | 'condition'>;
+
+/**
+ * The offers a row carries: a dated row's own perks replace the standing
+ * night's entirely; otherwise the rule's apply. Either way, only those still
+ * running on THAT row's date — a perk ending Thursday never reaches Saturday.
+ */
+export function resolvePerks(date: string, own: PerkIn[] | null, rule: PerkIn[]): Perk[] {
+	const source = own && own.length ? own : rule;
+	return source
+		.filter((p) => p.activeUntil == null || p.activeUntil >= date)
+		.sort((a, b) => a.sortOrder - b.sortOrder)
+		.map(({ kind, label, condition }) => ({ kind, label, condition }));
+}
+
 export interface VenueIn {
 	id: string;
 	name: string;
@@ -31,6 +54,8 @@ export interface ResidencyIn {
 	claimType: string | null;
 	source: string | null;
 	lastConfirmed: string | null; // YYYY-MM-DD
+	lineup: string | null; // the resident act
+	perks: PerkIn[];
 }
 
 export interface OccurrenceIn {
@@ -48,6 +73,8 @@ export interface OccurrenceIn {
 	source: string | null;
 	status: 'LEAD' | 'CONFIRMED' | 'CHANGED' | 'CANCELLED';
 	confirmedOn: string | null; // YYYY-MM-DD
+	lineup: string | null;
+	perks: PerkIn[];
 }
 
 export type RowState = 'publishable' | 'needs-time' | 'lead' | 'changed';
@@ -64,6 +91,8 @@ export interface Row {
 	usualPrice: number | null; // the residency's price, when an override changes it
 	extraTiers: number;
 	register: Register | null;
+	lineup: string | null;
+	perks: Perk[];
 	claimType: string | null;
 	source: string | null;
 	checkedOn: string | null; // when it was confirmed (or attended, for VETTED)
@@ -144,6 +173,8 @@ export function buildWeek(
 				usualPrice: priceGate !== r.priceGate ? r.priceGate : null,
 				extraTiers: extraTiers(o.priceNote),
 				register,
+				lineup: o.lineup ?? r.lineup,
+				perks: resolvePerks(date, o.perks, r.perks),
 				claimType: o.claimType,
 				source: o.source,
 				checkedOn: o.confirmedOn,
@@ -169,6 +200,8 @@ export function buildWeek(
 			usualPrice: null,
 			extraTiers: 0,
 			register: r.register,
+			lineup: r.lineup,
+			perks: resolvePerks(date, null, r.perks),
 			claimType: r.claimType,
 			source: r.source,
 			checkedOn: r.lastConfirmed,
@@ -193,6 +226,8 @@ export function buildWeek(
 			usualPrice: null,
 			extraTiers: extraTiers(o.priceNote),
 			register: o.register,
+			lineup: o.lineup,
+			perks: resolvePerks(o.date, o.perks, []),
 			claimType: o.claimType,
 			source: o.source,
 			checkedOn: o.confirmedOn,
