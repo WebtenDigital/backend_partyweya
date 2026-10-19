@@ -1,1 +1,32 @@
 @import 'tailwindcss';
+
+@theme {
+	--font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+	--font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+	--color-ink: #131315;
+	--color-panel: #1b1b1f;
+	--color-line: #2c2c32;
+	--color-fg: #ececef;
+	--color-dim: #8b8b94;
+
+	--color-chill: #7fb2e5;
+	--color-social: #e8b04b;
+	--color-energy: #e5636f;
+	--color-vetted: #5ec48a;
+}
+
+@layer components {
+	.btn {
+		@apply rounded-md border border-line px-3 py-2 hover:border-dim;
+	}
+	.btn-primary {
+		@apply rounded-md bg-fg px-3 py-2 font-medium text-ink disabled:cursor-not-allowed disabled:bg-line disabled:text-dim;
+	}
+	.panel {
+		@apply rounded-md border border-line bg-panel p-4;
+	}
+	.panel-title {
+		@apply font-mono text-[11px] font-semibold tracking-[0.15em] uppercase;
+	}
+}

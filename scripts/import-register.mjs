@@ -59,7 +59,7 @@ const trimList = (v) => v?.replace(/[;\s]+$/, '') || null;
 // source_enum migration). Enum values pass through; anything else stops
 // the import rather than being guessed.
 const SOURCES = ['ATTENDED', 'OWNER', 'MANAGER', 'PROMOTER', 'AGENT', 'TICKETING', 'SOCIAL_MEDIA', 'FLYER', 'PRESS', 'AUDIENCE'];
-function source(v, id) {
+function source(v, where) {
 	if (v == null || SOURCES.includes(v)) return v;
 	const s = v.toLowerCase();
 	if (['attended', 'partyweya', 'went'].includes(s)) return 'ATTENDED';
@@ -72,7 +72,7 @@ function source(v, id) {
 	if (['flyer', 'poster'].includes(s)) return 'FLYER';
 	if (s === 'press') return 'PRESS';
 	if (s.startsWith('audience')) return 'AUDIENCE';
-	throw new Error(`Occurrence ${id}: unknown source "${v}"`);
+	throw new Error(`${where}: unknown source "${v}"`);
 }
 
 const zones = load('0_zone.csv').map((z) => ({
@@ -121,7 +121,12 @@ const residencies = load('2_residency.csv').map((r) => ({
 	register: r.register,
 	runningSince: r.runningSince,
 	active: bool(r.active, true),
-	notes: trimList(r.notes)
+	notes: trimList(r.notes),
+	// Confirmation fields only when the sheet carries them, so a re-import
+	// from an older export doesn't wipe confirmations recorded in the app.
+	...('lastConfirmed' in r && { lastConfirmed: r.lastConfirmed }),
+	...('claimType' in r && { claimType: r.claimType }),
+	...('source' in r && { source: source(r.source, `Residency ${r.id}`) })
 }));
 
 const occurrences = load('3_occurrence.csv').map((o) => ({
@@ -140,7 +145,7 @@ const occurrences = load('3_occurrence.csv').map((o) => ({
 	lineup: trimList(o.lineup),
 	register: o.register,
 	claimType: o.claimType,
-	source: source(o.source, o.id),
+	source: source(o.source, `Occurrence ${o.id}`),
 	status: o.status ?? 'LEAD',
 	confirmedOn: o.confirmedOn,
 	confirmedBy: o.confirmedBy
@@ -172,6 +177,7 @@ const casts = {
 	date: 'date',
 	runningSince: 'timestamp',
 	confirmedOn: 'timestamp',
+	lastConfirmed: 'timestamp',
 	areas: 'text[]'
 };
 

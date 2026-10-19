@@ -240,6 +240,8 @@ model Residency {
   active       Boolean    @default(true)
 
   lastConfirmed DateTime? // drives the monthly sweep
+  claimType     ClaimType? // what PartyWeya may say about the standing night
+  source        Source? //    who confirmed it; only ATTENDED can carry VETTED
   notes         String?
 
   occurrences Occurrence[]
