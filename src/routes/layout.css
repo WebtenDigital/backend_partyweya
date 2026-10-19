@@ -1,11 +1,40 @@
 @import 'tailwindcss';
 
-/* TT Firs Neue (TypeType). The file in static/fonts is not in git: the font is
-   licensed per use. Without it, pages fall back to the system sans. */
+/* TT Firs Neue (TypeType). The files in static/fonts are not in git: the font is
+   licensed per use. No 600 cut, so font-semibold resolves to Bold. Without the
+   files, pages fall back to the system sans. */
 @font-face {
 	font-family: 'TT Firs Neue';
-	src: url('/fonts/tt-firs-neue-var.woff2') format('woff2');
-	font-weight: 100 900;
+	src: url('/fonts/TT-Firs-Neue-Regular.woff') format('woff');
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+}
+@font-face {
+	font-family: 'TT Firs Neue';
+	src: url('/fonts/TT-Firs-Neue-Medium.woff') format('woff');
+	font-weight: 500;
+	font-style: normal;
+	font-display: swap;
+}
+@font-face {
+	font-family: 'TT Firs Neue';
+	src: url('/fonts/TT-Firs-Neue-Bold.woff') format('woff');
+	font-weight: 700;
+	font-style: normal;
+	font-display: swap;
+}
+@font-face {
+	font-family: 'TT Firs Neue';
+	src: url('/fonts/TT-Firs-Neue-ExtraBold.woff') format('woff');
+	font-weight: 800;
+	font-style: normal;
+	font-display: swap;
+}
+@font-face {
+	font-family: 'TT Firs Neue';
+	src: url('/fonts/TT-Firs-Neue-Black.woff') format('woff');
+	font-weight: 900;
 	font-style: normal;
 	font-display: swap;
 }

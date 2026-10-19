@@ -57,8 +57,9 @@ You can preview the production build with `npm run preview`.
 
 ## Fonts
 
-The sans is **TT Firs Neue** (TypeType), self-hosted from `static/fonts/tt-firs-neue-var.woff2`.
-That folder is not in git: the font is licensed, and the trial build may only be used for
-testing. Put the licensed variable font (weights 100–900) at that path as woff2 before
-deploying; without it, pages fall back to the system sans. Mono is IBM Plex Mono from
-Google Fonts.
+The sans is **TT Firs Neue** (TypeType), self-hosted from `static/fonts/`:
+`TT-Firs-Neue-{Regular,Medium,Bold,ExtraBold,Black}.woff` (400, 500, 700, 800, 900).
+That folder is not in git. The files currently in use are TypeType's trial build,
+licensed for testing only — replace them with licensed files (same names, or update
+the `@font-face` rules in `src/routes/layout.css`) before deploying. Without them,
+pages fall back to the system sans. Mono is IBM Plex Mono from Google Fonts.

@@ -8,7 +8,7 @@
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
-	<link rel="preload" href="/fonts/tt-firs-neue-var.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
+	<link rel="preload" href="/fonts/TT-Firs-Neue-Regular.woff" as="font" type="font/woff" crossorigin="anonymous" />
 	<link rel="preconnect" href="https://fonts.googleapis.com" />
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
 	<link
