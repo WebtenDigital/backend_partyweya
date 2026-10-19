@@ -79,6 +79,7 @@ enum Source {
   MANAGER
   PROMOTER //      the organiser running the night
   AGENT //         a booking agent — pair with organiserId
+  ACT //           the performer told us about their own gig — FACTUAL, confirmed
   TICKETING //     Quicket, Mticket — a listing, not a judgement
   SOCIAL_MEDIA //  the venue's or organiser's own post
   FLYER
@@ -400,8 +401,17 @@ model Act {
   organiser     Organiser? @relation(fields: [organiserId], references: [id], onDelete: SetNull)
   organiserId   String? //                    their agent, where they have one
   notes         String?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @default(now()) @updatedAt
+
+  // Internal contact, laid out like the venue's. Never reaches public_events.
+  contactName     String?
+  phone           String?
+  whatsapp        Boolean   @default(false)
+  bestTimeToReach String?
+  phoneVerifiedAt DateTime? // set on a call that reaches them; cleared when the number changes
+  lastContacted   DateTime?
+  paidClient      Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @default(now()) @updatedAt
 
   @@index([aliases], type: Gin)
 }

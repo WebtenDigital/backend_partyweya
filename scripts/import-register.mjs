@@ -62,7 +62,7 @@ const names = (v) =>
 // The sheet's free-text sources onto the Source enum (same table as the
 // source_enum migration). Enum values pass through; anything else stops
 // the import rather than being guessed.
-const SOURCES = ['ATTENDED', 'OWNER', 'MANAGER', 'PROMOTER', 'AGENT', 'TICKETING', 'SOCIAL_MEDIA', 'FLYER', 'PRESS', 'AUDIENCE'];
+const SOURCES = ['ATTENDED', 'OWNER', 'MANAGER', 'PROMOTER', 'AGENT', 'ACT', 'TICKETING', 'SOCIAL_MEDIA', 'FLYER', 'PRESS', 'AUDIENCE'];
 function source(v, where) {
 	if (v == null || SOURCES.includes(v)) return v;
 	const s = v.toLowerCase();
@@ -71,6 +71,7 @@ function source(v, where) {
 	if (s === 'manager') return 'MANAGER';
 	if (s.startsWith('promoter')) return 'PROMOTER';
 	if (s.startsWith('agent')) return 'AGENT';
+	if (s === 'act' || s.startsWith('act ') || s === 'artist' || s === 'performer') return 'ACT';
 	if (['quicket', 'mticket', 'ticketing'].includes(s)) return 'TICKETING';
 	if (s === 'social media') return 'SOCIAL_MEDIA';
 	if (['flyer', 'poster'].includes(s)) return 'FLYER';

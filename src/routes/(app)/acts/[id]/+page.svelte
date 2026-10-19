@@ -64,6 +64,26 @@
 						<p class="text-[11px] text-dim">As an organiser, the agent is who you call. As an act, this is who performs. They stay separate records.</p>
 					</section>
 
+					<section class="panel space-y-3">
+						<h2 class="font-semibold">Contact <span class="text-xs font-normal text-dim">— internal, never published</span></h2>
+						<p class="text-xs text-dim">Acts hear about their own bookings before venues publicise them — and play venues the register has never heard of.</p>
+						<div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_200px]">
+							<label class="field"><span>Best person to call</span><input name="contactName" class="input h-11" value={a.contactName ?? ''} placeholder="—" /></label>
+							<label class="field">
+								<span>Number {#if a.phone && !a.phoneVerifiedAt}<span class="text-social">· unverified</span>{:else if a.phoneVerifiedAt}<span class="text-vetted">· verified {shortDate(a.phoneVerifiedAt)}</span>{/if}</span>
+								<input name="phone" type="tel" class="input h-11 font-mono" value={a.phone ?? ''} placeholder="none on file" />
+							</label>
+						</div>
+						<div class="grid gap-3 sm:grid-cols-2 sm:items-center">
+							<label class="flex h-11 items-center gap-2 text-sm"><input type="checkbox" name="whatsapp" class="size-5" checked={a.whatsapp} /> On WhatsApp</label>
+							<input name="bestTime" class="input h-11" value={a.bestTimeToReach ?? ''} placeholder="Best time to reach them" />
+						</div>
+						<div class="flex flex-wrap items-center justify-between gap-3 text-xs">
+							<label class="flex h-11 items-center gap-2 text-sm"><input type="checkbox" name="paidClient" class="size-5" checked={a.paidClient} /> Paid client</label>
+							<span class="font-mono text-dim">Last called <span class={a.lastContacted ? 'text-fg' : 'text-social'}>{a.lastContacted ? shortDate(a.lastContacted) : 'never'}</span></span>
+						</div>
+					</section>
+
 					<section class="panel space-y-3 border-vetted/30">
 						<h2 class="font-semibold">Does their name transfer?</h2>
 						<div class="grid grid-cols-3 gap-2 text-sm">

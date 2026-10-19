@@ -1,6 +1,6 @@
 import { error, fail } from '@sveltejs/kit';
 import { prisma, ActRole } from '#lib/server/prisma.js';
-import { Invalid, failureMessage, oneOf, text } from '#lib/server/forms.js';
+import { Invalid, failureMessage, oneOf, phone, text } from '#lib/server/forms.js';
 import { billedNames, loadActs } from '#lib/server/acts.js';
 import { asDate, isoDate, kampalaDate } from '#lib/server/register.js';
 import { nearMatch, resolveAct } from '#lib/build/acts.js';
@@ -41,6 +41,13 @@ export const load: PageServerLoad = async ({ params }) => {
 			lastSeen: kampalaDate(act.lastSeen),
 			organiserId: act.organiserId,
 			notes: act.notes,
+			contactName: act.contactName,
+			phone: act.phone,
+			whatsapp: act.whatsapp,
+			bestTimeToReach: act.bestTimeToReach,
+			phoneVerifiedAt: kampalaDate(act.phoneVerifiedAt),
+			lastContacted: kampalaDate(act.lastContacted),
+			paidClient: act.paidClient,
 			updatedAt: act.updatedAt.toISOString()
 		},
 		organisers,
@@ -85,6 +92,7 @@ export const actions: Actions = {
 			const lastSeen = text(f, 'lastSeen');
 			if (lastSeen && !/^\d{4}-\d{2}-\d{2}$/.test(lastSeen)) throw new Invalid('Last seen must be a date.');
 			const seen = text(f, 'updatedAt');
+			const number = phone(f, 'phone');
 			const { count } = await prisma.act.updateMany({
 				where: { id: params.id, updatedAt: new Date(seen ?? 0) },
 				data: {
@@ -95,7 +103,14 @@ export const actions: Actions = {
 					transfersNote,
 					lastSeen: lastSeen ? asDate(lastSeen) : null,
 					organiserId: text(f, 'organiserId'),
-					notes: text(f, 'notes')
+					notes: text(f, 'notes'),
+					// Contact — internal. A number nobody has answered isn't verified, whatever it replaced.
+					contactName: text(f, 'contactName'),
+					phone: number,
+					...(number !== current.phone && { phoneVerifiedAt: null }),
+					whatsapp: f.get('whatsapp') === 'on',
+					bestTimeToReach: text(f, 'bestTime'),
+					paidClient: f.get('paidClient') === 'on'
 				}
 			});
 			if (count === 0) throw new Invalid('This act changed since you loaded the page — reload to see the latest.');

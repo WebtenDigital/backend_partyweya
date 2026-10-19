@@ -13,7 +13,7 @@ export const REPEATS: { key: Repeat; label: (day: string) => string; writes: str
 	{ key: 'cancelled', label: () => 'It’s off this week', writes: 'OCCURRENCE · CANCELLED' }
 ];
 
-export type Provenance = 'venue' | 'promoter' | 'listing' | 'suggested' | 'attended';
+export type Provenance = 'venue' | 'promoter' | 'act' | 'listing' | 'suggested' | 'attended';
 
 /** What each answer to "where did this come from?" writes. No default, on purpose. */
 export const PROVENANCE: {
@@ -28,6 +28,10 @@ export const PROVENANCE: {
 		sources: [{ key: 'OWNER', label: 'the owner' }, { key: 'MANAGER', label: 'a manager' }] },
 	{ key: 'promoter', label: 'A promoter or agent told me', effect: 'FACTUAL · confirmed', confirms: true, claim: 'FACTUAL',
 		sources: [{ key: 'PROMOTER', label: 'the promoter' }, { key: 'AGENT', label: 'an agent' }] },
+	// The performer, about their own booking: a principal, so confirmed — though they
+	// rarely know the door time, so it often lands as "blocks this week" for a venue call.
+	{ key: 'act', label: 'The act told me', effect: 'FACTUAL · confirmed · time often unknown', confirms: true, claim: 'FACTUAL',
+		sources: [{ key: 'ACT', label: 'the act themselves' }] },
 	{ key: 'listing', label: 'I saw a listing or a flyer', effect: 'FACTUAL · stays a LEAD', confirms: false, claim: 'FACTUAL',
 		sources: [{ key: 'TICKETING', label: 'a ticketing listing' }, { key: 'SOCIAL_MEDIA', label: 'their social post' }, { key: 'FLYER', label: 'a flyer or poster' }, { key: 'PRESS', label: 'the press' }] },
 	{ key: 'suggested', label: 'Someone suggested it', effect: 'no claim · needs a call', confirms: false, claim: null,
