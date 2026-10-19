@@ -1,4 +1,5 @@
 <script lang="ts">
+	import HomeLogo from '#lib/components/HomeLogo.svelte';
 	import { GROUPS, type GroupKey } from '#lib/build/calls.js';
 	import { addDays, shortDate } from '#lib/build/week.js';
 	import type { PageProps } from './$types';
@@ -37,12 +38,15 @@
 
 <div class="min-h-screen bg-ink text-fg">
 	<header class="flex flex-wrap items-end justify-between gap-4 border-b border-line px-4 py-6 sm:px-6">
-		<div>
-			<p class="font-mono text-[11px] tracking-[0.2em] text-dim uppercase">Thursday</p>
-			<h1 class="mt-1 text-2xl font-semibold tracking-tight">Call round — week of Mon {shortDate(data.week)}</h1>
-			<p class="mt-1 text-sm text-dim">
-				{plural(data.queue.length, 'venue')} on the list. The top two groups are what stops next week publishing.
-			</p>
+		<div class="flex items-center gap-5">
+			<HomeLogo week={data.currentWeek} />
+			<div>
+				<p class="font-mono text-[11px] tracking-[0.2em] text-dim uppercase">Thursday</p>
+				<h1 class="mt-1 text-2xl font-semibold tracking-tight">Call round — week of Mon {shortDate(data.week)}</h1>
+				<p class="mt-1 text-sm text-dim">
+					{plural(data.queue.length, 'venue')} on the list. The top two groups are what stops next week publishing.
+				</p>
+			</div>
 		</div>
 		<nav class="flex flex-wrap gap-2 text-sm">
 			<a href="/calls?week={addDays(data.week, -7)}" class="btn">←</a>

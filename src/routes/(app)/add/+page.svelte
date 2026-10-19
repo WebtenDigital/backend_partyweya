@@ -1,4 +1,5 @@
 <script lang="ts">
+	import HomeLogo from '#lib/components/HomeLogo.svelte';
 	import { enhance } from '$app/forms';
 	import { goto } from '$app/navigation';
 	import { DAYS, PROVENANCE, REPEATS, isoDay, nextOn, type Provenance, type Repeat } from '#lib/build/add.js';
@@ -182,6 +183,7 @@
 >
 	<header class="flex flex-wrap items-center justify-between gap-4 border-b border-line px-4 py-5 sm:px-6">
 		<div class="flex items-center gap-3">
+			<span class="mr-2"><HomeLogo week={data.currentWeek} /></span>
 			<span class="grid size-9 place-items-center rounded-md bg-fg text-xl font-bold text-ink">+</span>
 			<div>
 				<h1 class="text-xl font-semibold">Add to the register</h1>

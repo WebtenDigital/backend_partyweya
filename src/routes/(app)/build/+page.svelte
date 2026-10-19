@@ -1,4 +1,5 @@
 <script lang="ts">
+	import HomeLogo from '#lib/components/HomeLogo.svelte';
 	import {
 		REGISTERS,
 		addDays,
@@ -101,9 +102,12 @@
 
 <div class="min-h-screen bg-ink text-fg">
 	<header class="flex flex-wrap items-end justify-between gap-4 border-b border-line px-4 py-6 sm:px-6">
-		<div>
-			<p class="font-mono text-[11px] tracking-[0.2em] text-dim uppercase">Sunday build</p>
-			<h1 class="mt-1 text-2xl font-semibold tracking-tight">{title(data.week, data.weekEnd)}</h1>
+		<div class="flex items-center gap-5">
+			<HomeLogo week={data.currentWeek} />
+			<div>
+				<p class="font-mono text-[11px] tracking-[0.2em] text-dim uppercase">Sunday build</p>
+				<h1 class="mt-1 text-2xl font-semibold tracking-tight">{title(data.week, data.weekEnd)}</h1>
+			</div>
 		</div>
 		<nav class="flex flex-wrap gap-2 text-sm">
 			<a href="/build?week={addDays(data.week, -7)}" class="btn">← Previous week</a>

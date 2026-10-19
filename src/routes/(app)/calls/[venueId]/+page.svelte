@@ -1,4 +1,5 @@
 <script lang="ts">
+	import HomeLogo from '#lib/components/HomeLogo.svelte';
 	import { enhance } from '$app/forms';
 	import { CADENCE, Q6 } from '#lib/build/calls.js';
 	import { shortDate } from '#lib/build/week.js';
@@ -83,12 +84,15 @@
 	<input type="hidden" name="mode" value={mode} />
 
 	<header class="flex flex-wrap items-end justify-between gap-4 border-b border-line px-4 py-6 sm:px-6">
-		<div>
-			<a href="/calls?week={data.week}" class="font-mono text-[11px] tracking-[0.2em] text-chill uppercase">← Call round</a>
-			<h1 class="mt-1 text-2xl font-semibold tracking-tight">{data.venue.name}</h1>
-			<p class="font-mono text-xs text-dim">
-				{[data.venue.zone ?? 'NO ZONE', data.venue.division, data.venue.location].filter(Boolean).join(' · ')}
-			</p>
+		<div class="flex items-center gap-5">
+			<HomeLogo week={data.currentWeek} />
+			<div>
+				<a href="/calls?week={data.week}" class="font-mono text-[11px] tracking-[0.2em] text-chill uppercase">← Call round</a>
+				<h1 class="mt-1 text-2xl font-semibold tracking-tight">{data.venue.name}</h1>
+				<p class="font-mono text-xs text-dim">
+					{[data.venue.zone ?? 'NO ZONE', data.venue.division, data.venue.location].filter(Boolean).join(' · ')}
+				</p>
+			</div>
 		</div>
 		<div class="flex items-center gap-4">
 			<a href="/add?venue={data.venue.id}" class="btn text-sm" title="Something that doesn’t fit this call">+ Add to the register</a>
