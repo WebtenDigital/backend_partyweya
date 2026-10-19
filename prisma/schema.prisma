@@ -1,26 +1,32 @@
-// PartyWeya Supply Register — Prisma schema
+// ═══════════════════════════════════════════════════════════════════════
+//  PartyWeya Supply Register — Prisma schema
 //
-// Implements PartyWeya_Supply_Register_and_Call_Protocol.md Part 1, with one
-// addition: Residency. See the chat notes for why it earns its place.
+//  Reconciled against the register sheet on 19 Oct 2026. Three rules the
+//  shape follows from:
 //
-// NOTE ON NAMING: Prisma generates PascalCase tables and camelCase columns.
-// If you want idiomatic snake_case in Postgres (easier to read in the Supabase
-// dashboard and in raw SQL), add @@map / @map directives, or keep these names
-// and quote identifiers in any hand-written SQL.
+//  1. Ids are typed by hand and readable (tehilas, tehilas-acoustic).
+//     No @default(cuid()) anywhere — a blank id must FAIL the import, not
+//     be silently replaced by a random string you can never find again.
+//  2. A LEAD is allowed to be incomplete. Anything discovered during the
+//     week is nullable; anything the public view depends on is checked
+//     there instead, so an unfinished row can exist without publishing.
+//  3. Controlled vocabularies are enums where the set is closed and a
+//     table where the set is still being corrected (see Zone).
+// ═══════════════════════════════════════════════════════════════════════
 
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
 }
 
+// Prisma 7: connection URLs live in prisma.config.ts (DIRECT_URL for the CLI)
+// and src/lib/server/prisma.ts (pooled DATABASE_URL for the app).
 datasource db {
   provider = "postgresql"
 }
 
 // ─────────────────────────────────────────────────────────────────────
 //  CONTROLLED VOCABULARIES
-//  These are closed sets the content system depends on not drifting.
-//  As enums, a mislabel is impossible rather than merely discouraged.
 // ─────────────────────────────────────────────────────────────────────
 
 enum Register {
@@ -30,15 +36,15 @@ enum Register {
 }
 
 enum ClaimType {
-  VETTED // PartyWeya attended and judged — the only one that licenses "best"
-  TRANSFERRED // known act/venue/organiser with an independent track record
-  FACTUAL // announced and real — licenses "this is happening", nothing more
+  VETTED //      PartyWeya attended and judged — the ONLY one that licenses "best"
+  TRANSFERRED // a known act or venue with an independent track record
+  FACTUAL //     announced and real — licenses "this is happening", nothing more
 }
 
 enum OccurrenceStatus {
-  LEAD // found in the weekly scan; nothing verified yet
+  LEAD //      found in the weekly scan; nothing verified yet
   CONFIRMED // time and price verified; publishable
-  CHANGED // was confirmed, details have moved — re-verify before use
+  CHANGED //   was confirmed, details have moved — re-verify before use
   CANCELLED
 }
 
@@ -53,7 +59,9 @@ enum Category {
   BRUNCH
   PAGEANT
   CONCERT
-  MOVIE_NIGHT
+  SPORTS_SCREENING //  was in the sheet's dropdown but not the enum
+  THEMED_NIGHT //      same
+  MOVIE_NIGHT //       in use on park-and-chill-kyanja
   OTHER
 }
 
@@ -91,13 +99,23 @@ enum PostType {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  ZONE — the zone map. Each zone sits inside exactly one division.
-//  Not yet a foreign key from Venue; switch to one once the map is settled.
+//  ZONE — a table, not an enum.
+//  The map is built on the KCCA parish registers but is still being
+//  corrected, and renaming a Postgres enum value is a migration while
+//  renaming a row is one UPDATE. The foreign key is what stops this
+//  column drifting back into free text — which is how it came to hold
+//  area arrays in the first place.
 // ─────────────────────────────────────────────────────────────────────
 
 model Zone {
-  name     String @id
-  division String
+  name      String  @id //  "BUKOTO–NTINDA"
+  division  String //       "Nakawa" — the KCCA division or district it sits in
+  active    Boolean @default(true)
+  sortOrder Int? //      for ordering a zone filter in the UI
+
+  venues Venue[]
+
+  @@index([division])
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -105,13 +123,16 @@ model Zone {
 // ─────────────────────────────────────────────────────────────────────
 
 model Venue {
-  id   String @id @default(cuid())
-  name String @unique // exactly as the venue brands itself (feeds the venue tag)
+  id   String @id //       typed by hand: "tehilas"
+  name String @unique //   exactly as the venue brands itself (feeds the venue tag)
+  //                       @unique catches double entry while this is hand-typed.
+  //                       Drop it the day two real venues share a name.
 
-  location String? // street-level directions, as a punter would give them
-  areas    String[] @default([]) // colloquial landmarks: Bugolobi, Nakulabye, Kansanga
-  zone     String? //  one of the Zone rows; null until placed
-  division String? // the zone's division (Nakawa, Kira MC, "Outside Kampala region")
+  location String? //      navigational: "Kira Rd. next to Distrikt24"
+  areas    String[] @default([]) // colloquial: ["Bukoto","Kisaasi","Naguru"]
+
+  zone     Zone?   @relation(fields: [zoneName], references: [name])
+  zoneName String? // null = not yet placed. 18 of 239 at import.
 
   // ── everything above is public-safe. everything below is internal only. ──
 
@@ -119,18 +140,18 @@ model Venue {
   contactRole     ContactRole?
   phone           String?
   whatsapp        Boolean      @default(false)
-  bestTimeToReach String? // nightlife staff are not morning people
+  bestTimeToReach String? //   nightlife staff are not morning people
 
   conversationTest    ConversationTest? // the call script's register diagnostic
   provisionalRegister Register? //         derived from conversationTest
 
-  lastAttended DateTime? // null = PartyWeya has never been
+  lastAttended DateTime? // null = PartyWeya has never been. The basis of VETTED.
   clearsF2     Boolean? //  null = unknown, which is the honest default
   paidClient   Boolean   @default(false) // keeps concentration visible (Rule 6)
 
   lastContacted  DateTime?
-  nextContactDue DateTime? // set by the cadence tier
-  notes          String? // includes the sheet's "check" flags from the import
+  nextContactDue DateTime? // set by the cadence tier — drives "who is due this week"
+  notes          String?
 
   residencies Residency[]
   occurrences Occurrence[]
@@ -138,81 +159,124 @@ model Venue {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
-  @@index([zone])
+  @@index([zoneName])
+  @@index([nextContactDue])
+  @@index([areas], type: Gin) // "which venues are in Bukoto"
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  ORGANISER — a promoter, agent or host who is not the venue.
+//  Makes "who do we depend on" answerable the way paidClient does for
+//  venues, and means the agent behind one concert is someone you can
+//  call again rather than a name stranded in a notes field.
+// ─────────────────────────────────────────────────────────────────────
+
+model Organiser {
+  id   String @id //     "kellen", "blankets-and-wine"
+  name String @unique
+
+  contactName String?
+  role        ContactRole?
+  phone       String?
+  whatsapp    Boolean      @default(false)
+
+  paidClient Boolean @default(false)
+  notes      String?
+
+  residencies Residency[]
+  occurrences Occurrence[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 }
 
 // ─────────────────────────────────────────────────────────────────────
 //  RESIDENCY — the recurring rule. One row, indefinitely.
 //  Without this you insert ~30 rows a week by hand and the process dies.
-//  Monthly confirmation touches one row, which is exactly the standing-roster
-//  tier in the call protocol's Part 2.
+//  Monthly confirmation touches one row, which is exactly the standing-
+//  roster tier in the call protocol's Part 2.
 // ─────────────────────────────────────────────────────────────────────
 
 model Residency {
-  id      String @id @default(cuid())
+  id      String @id //   "tehilas-acoustic"
   venue   Venue  @relation(fields: [venueId], references: [id])
   venueId String
 
+  organiser   Organiser? @relation(fields: [organiserId], references: [id])
+  organiserId String? //  set when a promoter runs the night, not the venue
+
   eventName String
   category  Category
-  dayOfWeek Int // 1 = Monday … 7 = Sunday
-  startTime String? // "19:00" — local wall-clock, no timezone arithmetic
+  dayOfWeek Int //        1 = Monday … 7 = Sunday
+  startTime String? //    "19:00" — local wall-clock, no timezone arithmetic.
+  //                      Nullable: 9 of 20 standing nights don't have it yet.
   endTime   String?
 
-  priceGate    Int?
-  priceAdvance Int?
-  register     Register
+  priceGate Int? //       renamed from costGate. There is no priceAdvance here:
+  //                      a residency fee is set once and never changed.
+
+  register Register //    REQUIRED, deliberately. This is the field Rule F4
+  //                      (mood balance) depends on, and the one that has drifted
+  //                      to 14 HIGH_ENERGY / 6 SOCIAL / 0 CHILL by being copied
+  //                      from the category. Making it required forces the call.
 
   recurrence   Recurrence @default(WEEKLY)
-  runningSince DateTime? // the durability signal: a year beats a month
+  runningSince DateTime? //  the durability signal: a year beats a month
   active       Boolean    @default(true)
 
   lastConfirmed DateTime? // drives the monthly sweep
-  notes         String? //   hosts, house bands, rotating guest DJs
+  notes         String?
 
   occurrences Occurrence[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
+  @@unique([venueId, dayOfWeek, eventName])
   @@index([dayOfWeek, active])
 }
 
 // ─────────────────────────────────────────────────────────────────────
 //  OCCURRENCE — a dated instance. One-offs, and overrides of a residency.
 //  A residency generates its weeks in application code; an Occurrence row
-//  only exists here when something is one-off, cancelled, or different
-//  from the standing rule that week.
+//  exists only when something is one-off, cancelled, or different from
+//  the standing rule that week.
 // ─────────────────────────────────────────────────────────────────────
 
 model Occurrence {
-  id   String   @id @default(cuid())
+  id   String   @id
   date DateTime @db.Date
 
   venue   Venue  @relation(fields: [venueId], references: [id])
   venueId String
 
   residency   Residency? @relation(fields: [residencyId], references: [id])
-  residencyId String? // set = this row overrides a residency for this date
+  residencyId String? //  set = this row OVERRIDES a residency for this date.
+  //                      Leave it null only for a genuine one-off, or the
+  //                      Sunday query emits the residency and this row both.
+
+  organiser   Organiser? @relation(fields: [organiserId], references: [id])
+  organiserId String?
 
   eventName String
   category  Category
 
-  startTime String? // nullable while LEAD; the public view requires it
+  startTime String? //    nullable while LEAD; the public view requires it
   endTime   String?
 
   priceGate    Int?
-  priceAdvance Int?
-  priceNote    String? // tiers as advertised: "165K PRE | 190K AT THE GATE"
-  lineup       String? // named acts — feeds the transferred claim
-  register     Register?
+  priceAdvance Int? //    must be cheaper than priceGate — checked in SQL below
+  priceNote    String? // "165K PRE | 190K AT THE GATE" — the tiers as advertised
+
+  lineup   String? //     named acts — the basis of a TRANSFERRED claim
+  register Register?
 
   claimType ClaimType? // what PartyWeya is allowed to say about this row
-  source    String? //    "called venue" | "flyer" | "audience suggestion" | …
+  source    String? //    "Owner" | "Quicket" | "Social Media" | "Agent (Kellen)"
 
   status      OccurrenceStatus @default(LEAD)
   confirmedOn DateTime?
-  confirmedBy String? // accountability when a published fact turns out wrong
+  confirmedBy String? //  accountability when a published fact turns out wrong
 
   publications Publication[]
 
@@ -225,18 +289,19 @@ model Occurrence {
 
 // ─────────────────────────────────────────────────────────────────────
 //  PUBLICATION — where an entry actually travelled.
-//  The substrate Rule F7 (measurement) needs to answer "which entries
-//  pulled people through", which nothing currently records.
-//  Optional for v1; cheap to add now, annoying to backfill later.
+//  Rule F7 (measurement) needs to answer "which entries pulled people
+//  through", which nothing else records. Written by the app on publish,
+//  never by hand. Cheap now, annoying to backfill later.
 // ─────────────────────────────────────────────────────────────────────
 
 model Publication {
-  id           String     @id @default(cuid())
+  id           String     @id @default(cuid()) // the one table the app creates,
+  //                                              so a generated id is right here
   occurrence   Occurrence @relation(fields: [occurrenceId], references: [id])
   occurrenceId String
 
   postType PostType
-  platform String // instagram | tiktok | snapchat
+  platform String //    instagram | tiktok | snapchat
   postedAt DateTime
   postUrl  String?
 

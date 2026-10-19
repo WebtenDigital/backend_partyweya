@@ -1,10 +1,13 @@
-// Import the register sheet exports (Venue, Residency, Occurrence CSVs) into
-// the database. Idempotent: rows are upserted by id, so re-running after a
-// sheet fix updates in place. Runs in one transaction — all or nothing.
+// Import the register sheet exports into the database, in dependency order:
+// Zone → Organiser → Venue → Residency → Occurrence. Idempotent: rows are
+// upserted by id, so re-running after a sheet fix updates in place. Runs in
+// one transaction — all or nothing.
 //
 //   node scripts/import-register.mjs [dir]     (default: ./data)
 //
-// Expects files named "… · Venue.csv", "… · Residency.csv", "… · Occurrence.csv".
+// Expects 0_zone.csv, 1_venue.csv, 2_residency.csv, 3_occurrence.csv, and
+// optionally organiser.csv. Empty cells are NULL; `areas` is a Postgres
+// array literal ({"Bukoto","Kisaasi"}).
 
 import 'dotenv/config';
 import fs from 'node:fs';
@@ -38,37 +41,57 @@ function parseCsv(text) {
 	);
 }
 
-function load(sheet) {
-	const file = fs.readdirSync(dir).find((f) => f.endsWith(`· ${sheet}.csv`));
-	if (!file) throw new Error(`No "· ${sheet}.csv" in ${dir}`);
-	return parseCsv(fs.readFileSync(path.join(dir, file), 'utf8'));
+function load(file, { optional = false } = {}) {
+	const full = path.join(dir, file);
+	if (!fs.existsSync(full)) {
+		if (optional) return [];
+		throw new Error(`Missing ${full}`);
+	}
+	return parseCsv(fs.readFileSync(full, 'utf8'));
 }
 
 const int = (v) => (v == null ? null : Number.parseInt(v, 10));
 const bool = (v, fallback) => (v == null ? fallback : v.toUpperCase() === 'TRUE');
-const join = (...parts) => parts.filter(Boolean).join('; ') || null;
 // "Ice Prince;" → "Ice Prince"
 const trimList = (v) => v?.replace(/[;\s]+$/, '') || null;
 
-const venues = load('Venue').map((v) => ({
+const zones = load('0_zone.csv').map((z) => ({
+	name: z.name,
+	division: z.division,
+	active: bool(z.active, true),
+	sortOrder: int(z.sortOrder)
+}));
+
+const organisers = load('organiser.csv', { optional: true }).map((o) => ({
+	id: o.id,
+	name: o.name,
+	contactName: o.contactName,
+	role: o.role,
+	phone: o.phone,
+	whatsapp: bool(o.whatsapp, false),
+	paidClient: bool(o.paidClient, false),
+	notes: o.notes
+}));
+
+const venues = load('1_venue.csv').map((v) => ({
 	id: v.id,
 	name: v.name,
 	location: v.location,
-	areas: JSON.parse(v.areas ?? '[]'),
-	zone: v.zone,
-	division: v.division,
+	areas: v.areas ?? '{}',
+	zoneName: v.zoneName,
 	contactName: v.contactName,
 	contactRole: v.contactRole,
 	phone: v.phone,
 	conversationTest: v.conversationTest,
 	provisionalRegister: v.provisionalRegister,
 	paidClient: bool(v.paidClient, false),
-	notes: join(v.notes, v.check)
+	notes: v.notes
 }));
 
-const residencies = load('Residency').map((r) => ({
+const residencies = load('2_residency.csv').map((r) => ({
 	id: r.id,
 	venueId: r.venueId,
+	organiserId: r.organiserId,
 	eventName: r.eventName,
 	category: r.category,
 	dayOfWeek: int(r.dayOfWeek),
@@ -81,11 +104,12 @@ const residencies = load('Residency').map((r) => ({
 	notes: trimList(r.notes)
 }));
 
-const occurrences = load('Occurrence').map((o) => ({
+const occurrences = load('3_occurrence.csv').map((o) => ({
 	id: o.id,
 	date: o.date,
 	venueId: o.venueId,
 	residencyId: o.residencyId,
+	organiserId: o.organiserId,
 	eventName: o.eventName,
 	category: o.category,
 	startTime: o.startTime,
@@ -102,19 +126,22 @@ const occurrences = load('Occurrence').map((o) => ({
 	confirmedBy: o.confirmedBy
 }));
 
-// The sheet carries zone + division on every venue; derive the zone map from
-// it, refusing a zone that appears under two divisions.
-const zones = new Map();
-for (const v of venues) {
-	if (!v.zone) continue;
-	if (zones.has(v.zone) && zones.get(v.zone) !== v.division)
-		throw new Error(`Zone ${v.zone} is in both ${zones.get(v.zone)} and ${v.division}`);
-	zones.set(v.zone, v.division);
+// A blank id must fail the import, not become a row nobody can find.
+for (const [table, rows, key] of [
+	['Zone', zones, 'name'],
+	['Organiser', organisers, 'id'],
+	['Venue', venues, 'id'],
+	['Residency', residencies, 'id'],
+	['Occurrence', occurrences, 'id']
+]) {
+	const blank = rows.findIndex((r) => !r[key]);
+	if (blank !== -1) throw new Error(`${table} row ${blank + 2} has no ${key}`);
 }
 
 // Postgres types for columns that need a cast from text parameters.
 const casts = {
 	contactRole: '"ContactRole"',
+	role: '"ContactRole"',
 	conversationTest: '"ConversationTest"',
 	provisionalRegister: '"Register"',
 	register: '"Register"',
@@ -147,7 +174,8 @@ const client = new pg.Client({ connectionString: process.env.DIRECT_URL });
 await client.connect();
 try {
 	await client.query('begin');
-	await upsert(client, 'Zone', 'name', [...zones].map(([name, division]) => ({ name, division })));
+	await upsert(client, 'Zone', 'name', zones);
+	await upsert(client, 'Organiser', 'id', organisers);
 	await upsert(client, 'Venue', 'id', venues);
 	await upsert(client, 'Residency', 'id', residencies);
 	await upsert(client, 'Occurrence', 'id', occurrences);
