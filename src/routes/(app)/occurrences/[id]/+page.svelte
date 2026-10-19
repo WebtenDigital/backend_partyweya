@@ -76,7 +76,7 @@
 				</label>
 			</section>
 
-			<section class="panel space-y-3">
+			<section id="offers" class="panel scroll-mt-4 space-y-3">
 				<h2 class="panel-title">This night’s offers</h2>
 				{#if o.residency}
 					<p class="text-xs text-dim">

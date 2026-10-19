@@ -172,6 +172,7 @@
 					<div class="space-y-2">
 						{#each day.rows as r (r.key)}
 							{@const live = r.state === 'publishable'}
+							{@const editor = r.kind === 'STANDING' ? `/residencies/${r.key.split('|')[0]}` : `/occurrences/${r.key}`}
 							<article
 								id="row-{r.key}"
 								class="grid grid-cols-2 gap-x-4 gap-y-2 rounded-md border px-4 py-3 text-sm md:grid-cols-[minmax(0,1.6fr)_90px_90px_90px_110px_minmax(0,1.2fr)] md:items-center
@@ -182,7 +183,7 @@
 							>
 								<div class="col-span-2 min-w-0 md:col-span-1">
 									<p class="flex flex-wrap items-center gap-2">
-										<a href={r.kind === 'STANDING' ? `/residencies/${r.key.split('|')[0]}` : `/occurrences/${r.key}`} class="font-semibold hover:underline">{r.eventName}</a>
+										<a href={editor} class="font-semibold hover:underline">{r.eventName}</a>
 										<span
 											class="rounded border px-1.5 py-px font-mono text-[10px] tracking-wider
 												{r.kind === 'STANDING' ? 'border-line text-dim' : 'border-dated/60 text-dated'}"
@@ -193,9 +194,8 @@
 									<p class="mt-0.5 text-fg/70">{r.venue.name}</p>
 									<p class="font-mono text-[10px] tracking-wider text-dim">{r.venue.zone ?? 'UNZONED'}</p>
 									{#if r.lineup}<p class="mt-1 text-xs text-fg/80">{r.lineup}</p>{/if}
-									{#if r.perks.length}
-										<div class="mt-1 flex flex-wrap gap-1">
-											{#each r.perks as p, i (i)}
+									<div class="mt-1 flex flex-wrap items-center gap-1">
+										{#each r.perks as p, i (i)}
 												{@const ending = p.activeUntil != null && p.activeUntil <= data.weekEnd}
 												<span
 													class="rounded border px-1.5 py-px font-mono text-[10px] {ending ? 'border-line text-dim' : 'border-vetted/40 text-vetted'}"
@@ -204,8 +204,14 @@
 													{p.kind} · {p.label}{p.condition ? ` · ${p.condition}` : ''}{ending ? ` · ends ${dayHeading(p.activeUntil!).toLowerCase()}` : ''}
 												</span>
 											{/each}
-										</div>
-									{/if}
+										<a
+											href="{editor}#offers"
+											class="rounded border border-dashed border-line px-1.5 py-px font-mono text-[10px] text-dim hover:border-vetted hover:text-vetted"
+											title={r.kind === 'STANDING' ? 'Offers on this standing night, every week' : 'Offers for this date only'}
+										>
+											{r.perks.length ? 'edit offers' : '+ offer'}
+										</a>
+									</div>
 								</div>
 
 								<div class="font-mono">

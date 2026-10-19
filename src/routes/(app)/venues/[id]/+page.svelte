@@ -65,7 +65,7 @@
 			</form>
 
 			<section class="panel">
-				<h2 class="panel-title mb-3">Standing nights</h2>
+				<h2 class="panel-title mb-3">Standing nights <span class="font-normal text-dim normal-case">— open one to edit it and its offers</span></h2>
 				{#if data.residencies.length === 0}<p class="text-sm text-dim">None.</p>{/if}
 				<ul class="divide-y divide-line">
 					{#each data.residencies as r (r.id)}

@@ -81,7 +81,7 @@
 				</label>
 			</section>
 
-			<section class="panel space-y-3">
+			<section id="offers" class="panel scroll-mt-4 space-y-3">
 				<h2 class="panel-title">Offers</h2>
 				{#key r.updatedAt}
 					<PerksEditor perks={data.perks} today={data.today} staleness={offerStaleness(r.lastConfirmed, data.today)} />
