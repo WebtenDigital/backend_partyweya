@@ -90,7 +90,10 @@
 				{[data.venue.zone ?? 'NO ZONE', data.venue.division, data.venue.location].filter(Boolean).join(' · ')}
 			</p>
 		</div>
-		<p class="text-right font-mono text-xs text-dim">logging as {data.caller}<br />⌘↵ to save</p>
+		<div class="flex items-center gap-4">
+			<a href="/add?venue={data.venue.id}" class="btn text-sm" title="Something that doesn’t fit this call">+ Add to the register</a>
+			<p class="text-right font-mono text-xs text-dim">logging as {data.caller}<br />⌘↵ to save</p>
+		</div>
 	</header>
 
 	<div class="grid gap-6 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_300px]">

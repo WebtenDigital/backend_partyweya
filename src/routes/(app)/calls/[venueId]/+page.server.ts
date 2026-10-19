@@ -10,6 +10,7 @@ import {
 } from '#lib/server/prisma.js';
 import { asDate, isWeek, isoDate, kampalaDate } from '#lib/server/register.js';
 import { CADENCE, Q6 } from '#lib/build/calls.js';
+import { Invalid, failureMessage, money, oneOf, slug, text, time } from '#lib/server/forms.js';
 import { kampalaToday, nextMonday } from '#lib/build/week.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -83,47 +84,6 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		residencyId: residencyId ?? venue.residencies.find((r) => !r.startTime)?.id ?? venue.residencies[0]?.id ?? null,
 		occurrenceId: occurrenceId ?? 'new'
 	};
-};
-
-// ── form parsing ─────────────────────────────────────────────────────────
-
-class Invalid extends Error {}
-
-const TIME = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
-const text = (f: FormData, k: string) => {
-	const v = f.get(k);
-	return typeof v === 'string' && v.trim() ? v.trim() : null;
-};
-const time = (f: FormData, k: string, label: string) => {
-	const v = text(f, k);
-	if (v && !TIME.test(v)) throw new Invalid(`${label} must be 24-hour, like 21:00`);
-	return v;
-};
-const money = (f: FormData, k: string, label: string) => {
-	const v = text(f, k);
-	if (v == null) return null;
-	const n = Number(v.replace(/[,\s]/g, ''));
-	if (!Number.isInteger(n) || n < 0) throw new Invalid(`${label} must be a whole number of shillings`);
-	return n;
-};
-const oneOf = <T extends string>(values: Record<string, T>, v: string | null, label: string) => {
-	if (v == null) return null;
-	if (!Object.values(values).includes(v as T)) throw new Invalid(`Unknown ${label}: ${v}`);
-	return v as T;
-};
-const slug = (s: string) =>
-	s
-		.toLowerCase()
-		.normalize('NFKD')
-		.replace(/[^a-z0-9]+/g, '-')
-		.replace(/^-|-$/g, '');
-
-// What a database guard means, in the caller's words.
-const CONSTRAINTS: Record<string, string> = {
-	advance_cheaper_than_gate: 'The advance price has to be cheaper than the gate price.',
-	vetted_means_attended: 'VETTED needs attendance; a call cannot carry it.',
-	residency_vetted_means_attended: 'VETTED needs attendance; a call cannot carry it.',
-	Occurrence_venueId_date_eventName_key: 'This venue already has a night with that name on that date.'
 };
 
 export const actions: Actions = {
@@ -243,10 +203,8 @@ export const actions: Actions = {
 				}
 			});
 		} catch (e) {
-			if (e instanceof Invalid) return fail(400, { error: e.message });
-			const msg = String((e as Error)?.message ?? e);
-			const known = Object.keys(CONSTRAINTS).find((c) => msg.includes(c));
-			if (known) return fail(400, { error: CONSTRAINTS[known] });
+			const message = failureMessage(e);
+			if (message) return fail(400, { error: message });
 			console.error(e);
 			return fail(500, { error: 'The save failed. Nothing was written.' });
 		}

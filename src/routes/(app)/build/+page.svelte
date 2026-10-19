@@ -9,6 +9,7 @@
 		type Register,
 		type Row
 	} from '#lib/build/week.js';
+	import { page } from '$app/state';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -86,6 +87,12 @@
 	}
 
 	const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+	// Arriving from “Add to the register”: show the row that was just written.
+	const highlight = $derived(page.url.searchParams.get('highlight'));
+	$effect(() => {
+		if (highlight) document.getElementById(`row-${highlight}`)?.scrollIntoView({ block: 'center' });
+	});
 </script>
 
 <svelte:head>
@@ -102,6 +109,7 @@
 			<a href="/build?week={addDays(data.week, -7)}" class="btn">← Previous week</a>
 			<a href="/build?week={addDays(data.week, 7)}" class="btn">Next week →</a>
 			<a href="/calls?week={data.week}" class="btn">Call round</a>
+			<a href="/add" class="btn" title="Add to the register">+ Add</a>
 			<button
 				class="btn-primary"
 				disabled
@@ -158,9 +166,11 @@
 						{#each day.rows as r (r.key)}
 							{@const live = r.state === 'publishable'}
 							<article
+								id="row-{r.key}"
 								class="grid grid-cols-2 gap-x-4 gap-y-2 rounded-md border border-line bg-panel px-4 py-3 text-sm md:grid-cols-[minmax(0,1.6fr)_90px_90px_90px_110px_minmax(0,1.2fr)] md:items-center
 									{live && r.register ? `border-l-4 ${REGISTER_EDGE[r.register]}` : 'border-l-4 border-l-line'}
-									{live ? '' : 'opacity-60'}"
+									{live || r.key === highlight ? '' : 'opacity-60'}
+									{r.key === highlight ? 'ring-2 ring-chill ring-offset-2 ring-offset-ink' : ''}"
 							>
 								<div class="col-span-2 min-w-0 md:col-span-1">
 									<p class="flex flex-wrap items-center gap-2">

@@ -47,6 +47,7 @@
 		<nav class="flex flex-wrap gap-2 text-sm">
 			<a href="/calls?week={addDays(data.week, -7)}" class="btn">←</a>
 			<a href="/calls?week={addDays(data.week, 7)}" class="btn">→</a>
+			<a href="/add" class="btn" title="Add to the register">+ Add</a>
 			<a href="/build?week={data.week}" class="btn">Sunday Build →</a>
 		</nav>
 	</header>
