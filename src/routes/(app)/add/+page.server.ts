@@ -2,6 +2,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import { CALLER_NAME } from '$app/env/private';
 import { prisma, Category, Register } from '#lib/server/prisma.js';
 import { addPerks } from '#lib/server/perks.js';
+import { lineupFrom, lineupSuggestions, newActsParam, unclassified } from '#lib/server/acts.js';
 import { Invalid, failureMessage, money, oneOf, slug, text, time } from '#lib/server/forms.js';
 import { asDate, kampalaDate } from '#lib/server/register.js';
 import { PROVENANCE, REPEATS, isoDay, mondayOf, nextOn, type Repeat } from '#lib/build/add.js';
@@ -9,7 +10,7 @@ import { kampalaToday } from '#lib/build/week.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url }) => {
-	const [venues, residencies, zones] = await Promise.all([
+	const [venues, residencies, zones, suggestions] = await Promise.all([
 		prisma.venue.findMany({
 			orderBy: { name: 'asc' },
 			select: {
@@ -37,11 +38,13 @@ export const load: PageServerLoad = async ({ url }) => {
 				runningSince: true
 			}
 		}),
-		prisma.zone.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' } })
+		prisma.zone.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' } }),
+		lineupSuggestions()
 	]);
 
 	return {
 		caller: CALLER_NAME,
+		suggestions,
 		today: kampalaToday(),
 		venueId: url.searchParams.get('venue'),
 		venues: venues.map((v) => ({
@@ -106,7 +109,8 @@ export const actions: Actions = {
 				const endTime = time(f, 'end', 'Wrap');
 				const priceGate = money(f, 'gate', 'Gate price');
 				const register = oneOf(Register, text(f, 'register'), 'register');
-				const lineup = text(f, 'lineup');
+				// The act: overwritten on a merge only when one is given.
+				const lineup = lineupFrom(f) ?? [];
 
 				// 3 · the answer to "does it repeat?" picks the table.
 				if (repeat === 'weekly') {
@@ -130,7 +134,7 @@ export const actions: Actions = {
 						priceGate,
 						register,
 						active: true,
-						...(lineup && { lineup }),
+						...(lineup.length && { lineup }),
 						...(running && { runningSince: asDate(`${running}-01`) }),
 						lastConfirmed: confirmed ? now : null,
 						...confirmation
@@ -183,7 +187,7 @@ export const actions: Actions = {
 								priceGate,
 								priceAdvance: money(f, 'advance', 'Advance price'),
 								register,
-								...(lineup && { lineup }),
+								...(lineup.length && { lineup }),
 								status: confirmed ? ('CONFIRMED' as const) : ('LEAD' as const)
 							};
 				const fields = {
@@ -219,9 +223,10 @@ export const actions: Actions = {
 			return fail(500, { error: 'The save failed. Nothing was written.' });
 		}
 
+		const fresh = text(f, 'repeat') === 'cancelled' ? [] : await unclassified(lineupFrom(f) ?? []);
 		redirect(
 			303,
-			`/build?week=${landing.week}${landing.highlight ? `&highlight=${encodeURIComponent(landing.highlight)}` : ''}`
+			`/build?week=${landing.week}${landing.highlight ? `&highlight=${encodeURIComponent(landing.highlight)}` : ''}${newActsParam(fresh)}`
 		);
 	}
 };

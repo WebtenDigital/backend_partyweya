@@ -11,6 +11,7 @@ import {
 import { asDate, isWeek, isoDate, kampalaDate } from '#lib/server/register.js';
 import { CADENCE, Q6 } from '#lib/build/calls.js';
 import { savePerks } from '#lib/server/perks.js';
+import { lineupFrom, lineupSuggestions, newActsParam, unclassified } from '#lib/server/acts.js';
 import { Invalid, failureMessage, money, oneOf, phone, slug, text, time } from '#lib/server/forms.js';
 import { kampalaToday, nextMonday } from '#lib/build/week.js';
 import type { Actions, PageServerLoad } from './$types';
@@ -48,6 +49,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 	const week = url.searchParams.get('week');
 
 	return {
+		suggestions: await lineupSuggestions(),
 		caller: CALLER_NAME,
 		week: isWeek(week) ? week : nextMonday(today),
 		today,
@@ -78,6 +80,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			priceGate: r.priceGate,
 			register: r.register,
 			lastConfirmed: kampalaDate(r.lastConfirmed),
+			lineup: r.lineup,
 			organiser: r.organiser,
 			perks: r.perks.map(editablePerk)
 		})),
@@ -177,8 +180,6 @@ export const actions: Actions = {
 				if (mode === 'standing') {
 					const id = text(f, 'residencyId');
 					if (!id) throw new Invalid('Pick the standing night you fixed.');
-					if (claimType === 'TRANSFERRED')
-						throw new Invalid('TRANSFERRED rests on a named lineup; standing nights don’t carry one.');
 					await tx.residency.update({
 						where: { id, venueId: venue.id },
 						data: {
@@ -186,6 +187,7 @@ export const actions: Actions = {
 							...(text(f, 's_start') && { startTime: time(f, 's_start', 'Start') }),
 							...(text(f, 's_end') && { endTime: time(f, 's_end', 'Wrap') }),
 							...(text(f, 's_gate') && { priceGate: money(f, 's_gate', 'Gate price') }),
+							...(lineupFrom(f, 's_lineup')?.length && { lineup: lineupFrom(f, 's_lineup') }),
 							lastConfirmed: now,
 							...confirmed
 						}
@@ -194,9 +196,8 @@ export const actions: Actions = {
 				}
 
 				if (mode === 'dated') {
-					const lineup = text(f, 'd_lineup');
-					if (claimType === 'TRANSFERRED' && !lineup)
-						throw new Invalid('TRANSFERRED rests on a named lineup — enter who’s playing.');
+					// TRANSFERRED is checked against the acts in the lineup by the database itself.
+					const lineup = lineupFrom(f, 'd_lineup') ?? [];
 					const date = text(f, 'd_date');
 					const eventName = text(f, 'd_name');
 					if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Invalid('A dated night needs its date.');
@@ -237,6 +238,7 @@ export const actions: Actions = {
 			return fail(500, { error: 'The save failed. Nothing was written.' });
 		}
 
-		redirect(303, `/calls?week=${isWeek(week) ? week : nextMonday(today)}`);
+		const billed = text(f, 'outcome') === 'reached' ? [...(lineupFrom(f, 's_lineup') ?? []), ...(lineupFrom(f, 'd_lineup') ?? [])] : [];
+		redirect(303, `/calls?week=${isWeek(week) ? week : nextMonday(today)}${newActsParam(await unclassified(billed))}`);
 	}
 };

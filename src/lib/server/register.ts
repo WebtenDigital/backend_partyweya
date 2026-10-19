@@ -1,6 +1,7 @@
 // Reading the register into the shapes the build and call-round logic use.
 
 import { prisma } from './prisma.js';
+import { billingKey, billings } from './acts.js';
 import {
 	addDays,
 	buildWeek,
@@ -99,6 +100,10 @@ export async function loadWeek(week: string) {
 			})
 		)
 	);
+
+	// The billing line for every row, composed by the one SQL function.
+	const lines = await billings(rows.map((r) => r.lineup));
+	for (const r of rows) r.billing = r.lineup.length ? (lines.get(billingKey(r.lineup)) ?? r.lineup.join(', ')) : null;
 
 	return { weekEnd, residencies, rows, gate: gate(week, rows) };
 }

@@ -2,6 +2,9 @@
 	import { enhance } from '$app/forms';
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
 	import PerksEditor, { toRows, type PerkRow } from '#lib/components/PerksEditor.svelte';
+	import LineupInput from '#lib/components/LineupInput.svelte';
+	import NewActsPrompt from '#lib/components/NewActsPrompt.svelte';
+	import { splitLineup } from '#lib/build/acts.js';
 	import { DAYS } from '#lib/build/add.js';
 	import { F5_WINDOW_DAYS, addDays, dayHeading, daysBetween, nextMonday, shortDate } from '#lib/build/week.js';
 	import type { PageProps } from './$types';
@@ -19,7 +22,7 @@
 		day: String(r.dayOfWeek),
 		start: r.startTime ?? '',
 		register: r.register as string,
-		lineup: r.lineup ?? '',
+		lineup: [...r.lineup],
 		notes: r.notes ?? ''
 	});
 	// svelte-ignore state_referenced_locally
@@ -46,12 +49,19 @@
 	const stale = $derived(openEnded > 0 && (confirmedAge == null || confirmedAge > F5_WINDOW_DAYS));
 
 	// The act often sits in an internal note ("Featuring The Clan Band;"), where nothing public can read it.
-	const noteAsAct = (note: string) => note.replace(/^\s*(featuring|feat\.?|ft\.?)\s+/i, '').replace(/[;\s]+$/, '');
+	// "Hosted by Felicia; Music by DJ Smallz" → ["Felicia", "DJ Smallz"]: the role words come back from each act's role.
+	const namesFromNote = (note: string) =>
+		splitLineup(note).map((n) => n.replace(/^(featuring|feat\.?|ft\.?|hosted by|music by|with|alongside)\s+/i, '').trim()).filter(Boolean);
+	let lineupKey = $state(0);
 	function moveNoteToAct() {
 		movedFrom = fields.notes;
-		fields.lineup = noteAsAct(fields.notes);
+		fields.lineup = namesFromNote(fields.notes);
 		fields.notes = '';
+		lineupKey++;
 	}
+	const unchanged = $derived(fields.lineup.join('|') === r.lineup.join('|'));
+	const billingLine = $derived(unchanged ? data.billing : fields.lineup.join(', '));
+	let lineupEl = $state<LineupInput>();
 
 	let saving = $state(false);
 	let formEl: HTMLFormElement;
@@ -76,7 +86,8 @@
 	method="POST"
 	action="?/save"
 	bind:this={formEl}
-	use:enhance={() => {
+	use:enhance={({ cancel }) => {
+		if (!lineupEl?.confirm()) return cancel();
 		saving = true;
 		return async ({ update }) => {
 			await update({ reset: false });
@@ -147,7 +158,11 @@
 					A resident act is as stable as the start time, so it lives on the rule. Only name a week’s act in an override when
 					knowing it changes what you’d write.
 				</p>
-				<input name="lineup" class="input h-11" placeholder="The Clan Band" bind:value={fields.lineup} />
+				{#key `${r.updatedAt}-${lineupKey}`}
+					<LineupInput bind:this={lineupEl} value={fields.lineup} bind:names={fields.lineup} suggestions={data.suggestions} placeholder="The Clan Band" onresolved={() => formEl.requestSubmit()} />
+				{/key}
+				{#if fields.lineup.length > 1}<p class="text-xs text-dim">Billed as: <span class="text-fg">{billingLine}</span>{unchanged ? '' : ' — the connecting words come from each act’s role once saved'}</p>{/if}
+				{#if form?.newNames?.length && !saving}<NewActsPrompt names={form.newNames} />{/if}
 				{#if movedFrom}
 					<p class="rounded-md border border-chill/40 bg-chill/5 px-3 py-2 text-xs text-chill">
 						→ Moved here from the internal note <em>“{movedFrom}”</em>, which nothing could read. Save the rule to keep it.
@@ -156,7 +171,7 @@
 							still carr{data.supply.noted === 1 ? 'ies' : 'y'} a note that may be their act.
 						{/if}
 					</p>
-				{:else if fields.notes.trim() && !fields.lineup.trim()}
+				{:else if fields.notes.trim() && !fields.lineup.length}
 					<p class="flex flex-wrap items-center gap-2 rounded-md border border-chill/40 bg-chill/5 px-3 py-2 text-xs text-chill">
 						<span>The internal note says <em>“{fields.notes}”</em> — nothing public can read it. If that’s the act:</span>
 						<button type="button" class="rounded border border-chill/60 px-2 py-1 hover:bg-chill/10" onclick={moveNoteToAct}>Move it to the act</button>
@@ -214,7 +229,7 @@
 				<div class="rounded-md border border-l-4 border-line bg-ink/40 p-3 {REGISTER_EDGE[fields.register]} {r.active ? '' : 'opacity-50'}">
 					<p class="font-mono text-[10px] tracking-wider text-dim">{dayHeading(night)}</p>
 					<p class="font-semibold">{fields.eventName}</p>
-					<p class="text-xs text-dim">{r.venue.name}{fields.lineup.trim() ? ` · ${fields.lineup.trim()}` : ''}</p>
+					<p class="text-xs text-dim">{r.venue.name}{fields.lineup.length ? ` · ${billingLine}` : ''}</p>
 					{#if shown.length}
 						<div class="mt-2 flex flex-wrap gap-1">
 							{#each shown as p, i (i)}

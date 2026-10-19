@@ -54,7 +54,7 @@ export interface ResidencyIn {
 	claimType: string | null;
 	source: string | null;
 	lastConfirmed: string | null; // YYYY-MM-DD
-	lineup: string | null; // the resident act
+	lineup: string[]; // the resident billing, in order
 	perks: PerkIn[];
 }
 
@@ -73,7 +73,7 @@ export interface OccurrenceIn {
 	source: string | null;
 	status: 'LEAD' | 'CONFIRMED' | 'CHANGED' | 'CANCELLED';
 	confirmedOn: string | null; // YYYY-MM-DD
-	lineup: string | null;
+	lineup: string[]; // empty = the standing night's
 	perks: PerkIn[];
 }
 
@@ -91,7 +91,8 @@ export interface Row {
 	usualPrice: number | null; // the residency's price, when an override changes it
 	extraTiers: number;
 	register: Register | null;
-	lineup: string | null;
+	lineup: string[];
+	billing: string | null; // the lineup as a sentence (compose_billing), filled in by the loader
 	perks: Perk[];
 	claimType: string | null;
 	source: string | null;
@@ -173,7 +174,8 @@ export function buildWeek(
 				usualPrice: priceGate !== r.priceGate ? r.priceGate : null,
 				extraTiers: extraTiers(o.priceNote),
 				register,
-				lineup: o.lineup ?? r.lineup,
+				lineup: o.lineup.length ? o.lineup : r.lineup,
+				billing: null,
 				perks: resolvePerks(date, o.perks, r.perks),
 				claimType: o.claimType,
 				source: o.source,
@@ -201,6 +203,7 @@ export function buildWeek(
 			extraTiers: 0,
 			register: r.register,
 			lineup: r.lineup,
+			billing: null,
 			perks: resolvePerks(date, null, r.perks),
 			claimType: r.claimType,
 			source: r.source,
@@ -227,6 +230,7 @@ export function buildWeek(
 			extraTiers: extraTiers(o.priceNote),
 			register: o.register,
 			lineup: o.lineup,
+			billing: null,
 			perks: resolvePerks(o.date, o.perks, []),
 			claimType: o.claimType,
 			source: o.source,

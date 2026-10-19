@@ -100,6 +100,17 @@ enum Recurrence {
   SEASONAL
 }
 
+enum ActRole {
+  BAND
+  DJ
+  COMEDIAN
+  POET
+  ACOUSTIC_ACT
+  HOST
+  ARTIST
+  OTHER
+}
+
 enum PerkKind {
   DRINK
   FOOD
@@ -213,6 +224,7 @@ model Organiser {
 
   residencies Residency[]
   occurrences Occurrence[]
+  acts        Act[] // acts they represent
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -256,7 +268,7 @@ model Residency {
   claimType     ClaimType? // what PartyWeya may say about the standing night
   source        Source? //    who confirmed it; only ATTENDED can carry VETTED
   notes         String? // internal — never public
-  lineup        String? // the resident act: "The Clan Band" — public, like the start time
+  lineup        String[]   @default([]) // the billing as advertised, in order — authoritative; resolved to Acts by name
 
   occurrences Occurrence[]
   perks       Perk[]
@@ -266,6 +278,7 @@ model Residency {
 
   @@unique([venueId, dayOfWeek, eventName])
   @@index([dayOfWeek, active])
+  @@index([lineup], type: Gin)
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -300,7 +313,7 @@ model Occurrence {
   priceAdvance Int? //    must be cheaper than priceGate — checked in SQL below
   priceNote    String? // "165K PRE | 190K AT THE GATE" — the tiers as advertised
 
-  lineup   String? //     named acts — the basis of a TRANSFERRED claim
+  lineup   String[]  @default([]) // the billing that night, in order; empty = the standing night's
   register Register?
 
   claimType ClaimType? // what PartyWeya is allowed to say about this row
@@ -318,6 +331,7 @@ model Occurrence {
 
   @@unique([venueId, date, eventName])
   @@index([date, status])
+  @@index([lineup], type: Gin)
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -365,4 +379,29 @@ model Perk {
 
   @@index([residencyId])
   @@index([occurrenceId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  ACT — the performers PartyWeya has taken a view on. Purely additive:
+//  no join table, no foreign key from a lineup. A lineup name resolves to
+//  an act by matching name or any alias, trimmed and case-insensitively,
+//  so merging two acts moves a name into aliases and never rewrites a
+//  billing. A name with no Act row is simply unclassified.
+// ─────────────────────────────────────────────────────────────────────
+
+model Act {
+  id            String     @id //            slug: "the-clan-band"
+  name          String     @unique //        canonical billing
+  aliases       String[]   @default([]) //   other spellings seen in the wild
+  role          ActRole? //                   null = not yet classified
+  transfers     Boolean? //                   null = not decided; true licenses TRANSFERRED
+  transfersNote String? //                    why — required when transfers is true
+  lastSeen      DateTime? //                  when PartyWeya last saw them
+  organiser     Organiser? @relation(fields: [organiserId], references: [id], onDelete: SetNull)
+  organiserId   String? //                    their agent, where they have one
+  notes         String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @default(now()) @updatedAt
+
+  @@index([aliases], type: Gin)
 }

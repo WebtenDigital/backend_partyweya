@@ -2,6 +2,7 @@ import { error, fail } from '@sveltejs/kit';
 import { prisma, Category, Register } from '#lib/server/prisma.js';
 import { Invalid, failureMessage, money, oneOf, text, time } from '#lib/server/forms.js';
 import { savePerks } from '#lib/server/perks.js';
+import { lineupFrom, lineupSuggestions, unclassified } from '#lib/server/acts.js';
 import { isoDate, kampalaDate } from '#lib/server/register.js';
 import { kampalaToday } from '#lib/build/week.js';
 import type { Actions, PageServerLoad } from './$types';
@@ -17,6 +18,7 @@ export const load: PageServerLoad = async ({ params }) => {
 	});
 	if (!o) error(404, 'No such dated night');
 	return {
+		suggestions: await lineupSuggestions(),
 		today: kampalaToday(),
 		occurrence: {
 			id: o.id,
@@ -52,6 +54,7 @@ export const actions: Actions = {
 			if (!eventName) throw new Invalid('The night needs its name.');
 			const seen = text(f, 'updatedAt');
 			if (!seen) throw new Invalid('Reload the page and try again.');
+			const lineup = lineupFrom(f);
 			await prisma.$transaction(async (tx) => {
 				const { count } = await tx.occurrence.updateMany({
 					where: { id: params.id, updatedAt: new Date(seen) },
@@ -63,7 +66,7 @@ export const actions: Actions = {
 						priceGate: money(f, 'priceGate', 'Gate price'),
 						priceAdvance: money(f, 'priceAdvance', 'Advance price'),
 						priceNote: text(f, 'priceNote'),
-						lineup: text(f, 'lineup'),
+						...(lineup !== undefined && { lineup }),
 						register: oneOf(Register, text(f, 'register'), 'register')
 					}
 				});
@@ -76,6 +79,6 @@ export const actions: Actions = {
 			console.error(e);
 			return fail(500, { error: 'The save failed. Nothing was written.' });
 		}
-		return { saved: true };
+		return { saved: true, newNames: await unclassified(lineupFrom(f) ?? []) };
 	}
 };

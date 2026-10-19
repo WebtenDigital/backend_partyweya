@@ -2,6 +2,7 @@
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
 	import { enhance } from '$app/forms';
 	import PerksEditor from '#lib/components/PerksEditor.svelte';
+	import LineupInput from '#lib/components/LineupInput.svelte';
 	import { CADENCE, Q6 } from '#lib/build/calls.js';
 	import { shortDate } from '#lib/build/week.js';
 	import type { PageProps } from './$types';
@@ -30,7 +31,8 @@
 	// svelte-ignore state_referenced_locally
 	let q6 = $state(data.venue.conversationTest ?? '');
 	let outcome = $state('');
-	let lineup = $state('');
+	let lineup = $state<string[]>([]);
+	let lineupEl = $state<LineupInput>();
 	let claimType = $state('FACTUAL');
 	let saving = $state(false);
 	let formEl: HTMLFormElement;
@@ -39,12 +41,15 @@
 	const occurrence = $derived(data.occurrences.find((o) => o.id === occurrenceId));
 	// The night being logged belongs to an organiser: they're who to ask, not the venue.
 	const organiser = $derived(mode === 'standing' ? residency?.organiser : mode === 'dated' ? occurrence?.organiser : null);
-	const transferredOk = $derived(mode === 'dated' && lineup.trim().length > 0);
+	// TRANSFERRED: someone in the lineup whose own act record transfers. The database checks it too.
+	const transferredOk = $derived(
+		mode !== 'none' && lineup.some((n) => data.suggestions.find((s) => s.name.toLowerCase() === n.toLowerCase())?.transfers === true)
+	);
 	$effect(() => {
 		if (!transferredOk && claimType === 'TRANSFERRED') claimType = 'FACTUAL';
 	});
 	$effect(() => {
-		lineup = occurrence?.lineup ?? '';
+		lineup = mode === 'standing' ? [...(residency?.lineup ?? [])] : [...(occurrence?.lineup ?? [])];
 	});
 
 	const sameRegister = $derived(
@@ -74,7 +79,8 @@
 	method="POST"
 	action="?/save"
 	bind:this={formEl}
-	use:enhance={() => {
+	use:enhance={({ cancel }) => {
+		if (!lineupEl?.confirm()) return cancel();
 		saving = true;
 		return async ({ update }) => {
 			await update({ reset: false });
@@ -152,6 +158,9 @@
 								<label class="field"><span>Wraps</span><input name="s_end" class="input" placeholder="02:00" value={residency?.endTime ?? ''} /></label>
 								<label class="field"><span>At the gate</span><input name="s_gate" class="input" inputmode="numeric" placeholder="20000" value={residency?.priceGate ?? ''} /></label>
 							</div>
+							<div class="field"><span>The resident act — leave it as it is if it hasn’t changed</span>
+								<LineupInput bind:this={lineupEl} name="s_lineup" value={residency?.lineup ?? []} bind:names={lineup} suggestions={data.suggestions} placeholder="The Clan Band" onresolved={() => formEl.requestSubmit()} />
+							</div>
 						<div class="space-y-2 border-t border-line pt-3">
 							<p class="text-sm">“Anything on for drinks or food that night?”</p>
 							<PerksEditor perks={residency?.perks ?? []} today={data.today} />
@@ -191,7 +200,9 @@
 									<option value="HIGH_ENERGY">High-Energy</option>
 								</select>
 							</label>
-							<label class="field col-span-2 sm:col-span-4"><span>Who’s playing</span><input name="d_lineup" class="input" bind:value={lineup} placeholder="Named acts — the basis of a TRANSFERRED claim" /></label>
+							<div class="field col-span-2 sm:col-span-4"><span>Who’s playing — headliner first</span>
+								<LineupInput bind:this={lineupEl} name="d_lineup" value={occurrence?.lineup ?? []} bind:names={lineup} suggestions={data.suggestions} placeholder="Named acts — the basis of a TRANSFERRED claim" onresolved={() => formEl.requestSubmit()} />
+							</div>
 						</div>
 						<div class="space-y-2 border-t border-line pt-3">
 							<p class="text-sm">“Anything on for drinks or food that night?”</p>
@@ -350,7 +361,7 @@
 			<p class="hidden max-w-56 text-xs text-dim 2xl:block">
 				{outcome && outcome !== 'reached'
 					? 'Only contact details and the next-call date save without reaching them.'
-					: 'TRANSFERRED unlocks once a lineup is entered. VETTED is not offered.'}
+					: 'TRANSFERRED unlocks when someone in the lineup transfers on their own record. VETTED is not offered.'}
 			</p>
 			<button class="btn-primary ml-auto" disabled={saving}>{saving ? 'Saving…' : 'Save call'}</button>
 		</div>

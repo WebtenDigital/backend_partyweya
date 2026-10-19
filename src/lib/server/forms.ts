@@ -44,7 +44,10 @@ const CONSTRAINTS: Record<string, string> = {
 	residency_vetted_means_attended: 'VETTED needs attendance; nothing else can carry it.',
 	Occurrence_venueId_date_eventName_key: 'This venue already has a night with that name on that date.',
 	Residency_venueId_dayOfWeek_eventName_key: 'This venue already has a standing night with that name on that day.',
-	Venue_name_key: 'A venue with that name is already in the register.'
+	Venue_name_key: 'A venue with that name is already in the register.',
+	transferred_needs_transferring_act:
+		'TRANSFERRED needs someone in the lineup whose own act record says they transfer. Set that on the act first, or claim FACTUAL.',
+	act_transfers_needs_note: 'Saying an act transfers needs a note on why.'
 };
 
 /** An Invalid or a known database guard → a form failure message; anything else rethrows. */

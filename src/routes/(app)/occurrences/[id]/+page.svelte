@@ -2,6 +2,8 @@
 	import { enhance } from '$app/forms';
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
 	import PerksEditor from '#lib/components/PerksEditor.svelte';
+	import LineupInput from '#lib/components/LineupInput.svelte';
+	import NewActsPrompt from '#lib/components/NewActsPrompt.svelte';
 	import { mondayOf } from '#lib/build/add.js';
 	import { addDays, dayHeading, shortDate } from '#lib/build/week.js';
 	import type { PageProps } from './$types';
@@ -11,6 +13,8 @@
 
 	const CATEGORIES = ['LIVE_BAND', 'DJ', 'KARAOKE', 'QUIZ', 'ACOUSTIC', 'POETRY', 'COMEDY', 'BRUNCH', 'PAGEANT', 'CONCERT', 'SPORTS_SCREENING', 'THEMED_NIGHT', 'MOVIE_NIGHT', 'OTHER'];
 	let saving = $state(false);
+	let formEl: HTMLFormElement;
+	let lineupEl = $state<LineupInput>();
 </script>
 
 <svelte:head><title>{o.eventName} · {shortDate(o.date)}</title></svelte:head>
@@ -18,7 +22,9 @@
 <form
 	method="POST"
 	action="?/save"
-	use:enhance={() => {
+	bind:this={formEl}
+	use:enhance={({ cancel }) => {
+		if (!lineupEl?.confirm()) return cancel();
 		saving = true;
 		return async ({ update }) => {
 			await update({ reset: false });
@@ -71,8 +77,11 @@
 					</label>
 				</div>
 				<label class="field">
-					<span>Lineup{o.residency?.lineup ? ` — empty shows the usual: ${o.residency.lineup}` : ''}</span>
-					<input name="lineup" class="input h-11" placeholder={o.residency?.lineup ?? 'Named acts'} value={o.lineup ?? ''} />
+					<span>Lineup{o.residency?.lineup.length ? ` — empty shows the usual: ${o.residency.lineup.join(', ')}` : ''}</span>
+					{#key o.updatedAt}
+						<LineupInput bind:this={lineupEl} value={o.lineup} suggestions={data.suggestions} placeholder={o.residency?.lineup.join(', ') || 'Named acts, headliner first'} onresolved={() => formEl.requestSubmit()} />
+					{/key}
+					{#if form?.newNames?.length && !saving}<NewActsPrompt names={form.newNames} />{/if}
 				</label>
 			</section>
 

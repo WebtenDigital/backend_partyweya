@@ -5,6 +5,7 @@
 	import { DAYS, PROVENANCE, REPEATS, isoDay, nextOn, type Provenance, type Repeat } from '#lib/build/add.js';
 	import { dayHeading, shillings } from '#lib/build/week.js';
 	import PerksEditor, { type PerkRow } from '#lib/components/PerksEditor.svelte';
+	import LineupInput from '#lib/components/LineupInput.svelte';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -37,7 +38,8 @@
 	let advance = $state('');
 	let register = $state('');
 	// The act and the night's offers — optional, so a flyer goes in once, in one pass.
-	let lineup = $state('');
+	let lineup = $state<string[]>([]);
+	let lineupEl = $state<LineupInput>();
 	let offers = $state<PerkRow[]>([]);
 	const offerCount = $derived(offers.filter((p) => p.label.trim()).length);
 	// 5 · provenance — no default, on purpose
@@ -120,7 +122,7 @@
 					['startTime', ...c(start, 'text-vetted')],
 					['priceGate', gate || 'null'],
 					['register', ...c(register, REGISTER_TONE[register])],
-					['lineup', ...c(lineup.trim() || (updating ? existing?.lineup : null))],
+					['lineup', ...c(lineup.length ? JSON.stringify(lineup) : updating && existing?.lineup.length ? JSON.stringify(existing.lineup) : null)],
 					['runningSince', ...c(runningSince)],
 					['lastConfirmed', prov?.confirms ? 'now()' : 'null', prov?.confirms ? 'text-vetted' : 'text-social'],
 					['claimType', ...c(claim)],
@@ -143,7 +145,7 @@
 							['priceGate', gate || 'null'] as [string, string],
 							['priceAdvance', advance || 'null'] as [string, string],
 							['register', ...c(register, REGISTER_TONE[register])] as [string, string, string],
-							['lineup', ...c(lineup.trim())] as [string, string, string],
+							['lineup', ...c(lineup.length ? JSON.stringify(lineup) : null)] as [string, string, string],
 							['status', prov?.confirms ? 'CONFIRMED' : 'LEAD', prov?.confirms ? 'text-vetted' : 'text-social'] as [string, string, string]
 						]),
 				['claimType', ...c(claim)],
@@ -177,7 +179,8 @@
 	method="POST"
 	action="?/save"
 	bind:this={formEl}
-	use:enhance={() => {
+	use:enhance={({ cancel }) => {
+		if (!lineupEl?.confirm()) return cancel();
 		saving = true;
 		return async ({ update }) => {
 			await update({ reset: false });
@@ -360,10 +363,10 @@
 					<div class="space-y-3 border-t border-line pt-3">
 						<label class="field">
 							<span>The act <span class="text-dim/70">— optional</span></span>
-							<input name="lineup" class="input h-11" placeholder="A resident band or DJ. Leave empty if it rotates." bind:value={lineup} />
+							<LineupInput bind:this={lineupEl} bind:names={lineup} suggestions={data.suggestions} placeholder="A resident band or DJ. Leave empty if it rotates." onresolved={() => formEl.requestSubmit()} />
 							<span>
 								{#if weekly || !repeat}On a standing night this is the <em>resident</em> act, so it fills every week. A one-week guest belongs on an override, not here.
-								{:else}This date’s act. {repeat === 'override' && replaces?.lineup ? `Leave it empty to show the usual: ${replaces.lineup}.` : ''}{/if}
+								{:else}This date’s act. {repeat === 'override' && replaces?.lineup.length ? `Leave it empty to show the usual: ${replaces.lineup.join(', ')}.` : ''}{/if}
 								{#if updating}Left as it is if you leave this empty.{/if}
 							</span>
 						</label>

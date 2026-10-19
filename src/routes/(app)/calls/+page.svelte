@@ -1,5 +1,6 @@
 <script lang="ts">
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
+	import NewActsPrompt from '#lib/components/NewActsPrompt.svelte';
 	import { enhance } from '$app/forms';
 	import { GROUPS, type GroupKey } from '#lib/build/calls.js';
 	import { addDays, shortDate } from '#lib/build/week.js';
@@ -59,6 +60,9 @@
 		</nav>
 	</header>
 
+	{#if data.newActs.length}
+		<div class="mx-4 mt-4 rounded-md border border-line bg-panel px-4 py-2 sm:mx-6"><NewActsPrompt names={data.newActs} /></div>
+	{/if}
 	{#if data.queue.length && missingNumbers}
 		<div class="mx-4 mt-5 rounded-md border border-energy/40 bg-energy/10 px-4 py-3 text-sm sm:mx-6">
 			<p class="font-semibold">

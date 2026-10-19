@@ -1,5 +1,6 @@
 <script lang="ts">
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
+	import NewActsPrompt from '#lib/components/NewActsPrompt.svelte';
 	import {
 		REGISTERS,
 		addDays,
@@ -114,6 +115,7 @@
 			<a href="/build?week={addDays(data.week, 7)}" class="btn">Next week →</a>
 			<a href="/calls?week={data.week}" class="btn">Call round</a>
 			<a href="/venues" class="btn">Venues</a>
+			<a href="/acts" class="btn">Acts</a>
 			<a href="/add" class="btn" title="Add to the register">+ Add</a>
 			<button
 				class="btn-primary"
@@ -128,6 +130,9 @@
 		</nav>
 	</header>
 
+	{#if data.newActs.length}
+		<div class="mx-4 mt-4 rounded-md border border-line bg-panel px-4 py-2 sm:mx-6"><NewActsPrompt names={data.newActs} /></div>
+	{/if}
 	{#if !data.gate.publishable && data.rows.length}
 		<div class="mx-4 mt-5 rounded-md border border-energy/40 bg-energy/10 px-4 py-3 text-sm sm:mx-6">
 			<p class="font-semibold"><span class="mr-2 text-energy">!</span>This set is not publishable as a round-up.</p>
@@ -193,7 +198,7 @@
 									</p>
 									<p class="mt-0.5 text-fg/70">{r.venue.name}</p>
 									<p class="font-mono text-[10px] tracking-wider text-dim">{r.venue.zone ?? 'UNZONED'}</p>
-									{#if r.lineup}<p class="mt-1 text-xs text-fg/80">{r.lineup}</p>{/if}
+									{#if r.billing}<p class="mt-1 text-xs text-fg/80">{r.billing}</p>{/if}
 									<div class="mt-1 flex flex-wrap items-center gap-1">
 										{#each r.perks as p, i (i)}
 												{@const ending = p.activeUntil != null && p.activeUntil <= data.weekEnd}

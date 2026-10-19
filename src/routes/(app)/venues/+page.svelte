@@ -154,6 +154,7 @@
 		</div>
 		<nav class="flex flex-wrap gap-2 text-sm">
 			<a href="/calls" class="btn">Call round</a>
+			<a href="/acts" class="btn">Acts</a>
 			<a href="/build?week={data.currentWeek}" class="btn">Sunday Build</a>
 		</nav>
 	</header>

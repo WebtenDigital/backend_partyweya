@@ -2,12 +2,13 @@ import { error, fail } from '@sveltejs/kit';
 import { prisma, Category, Register } from '#lib/server/prisma.js';
 import { Invalid, failureMessage, money, oneOf, text, time } from '#lib/server/forms.js';
 import { savePerks } from '#lib/server/perks.js';
+import { billingKey, billings, lineupFrom, lineupSuggestions, unclassified } from '#lib/server/acts.js';
 import { asDate, kampalaDate } from '#lib/server/register.js';
 import { kampalaToday } from '#lib/build/week.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params }) => {
-	const [r, standing, chill, noted] = await Promise.all([
+	const [r, standing, chill, noted, suggestions] = await Promise.all([
 		prisma.residency.findUnique({
 			where: { id: params.id },
 			include: {
@@ -19,10 +20,14 @@ export const load: PageServerLoad = async ({ params }) => {
 		prisma.residency.count({ where: { active: true } }),
 		prisma.residency.count({ where: { active: true, register: 'CHILL' } }),
 		// Standing nights whose act may still be sitting in an internal note.
-		prisma.residency.count({ where: { active: true, id: { not: params.id }, lineup: null, notes: { not: null } } })
+		prisma.residency.count({ where: { active: true, id: { not: params.id }, lineup: { isEmpty: true }, notes: { not: null } } }),
+		lineupSuggestions()
 	]);
 	if (!r) error(404, 'No such standing night');
+	const billing = r.lineup.length ? ((await billings([r.lineup])).get(billingKey(r.lineup)) ?? null) : null;
 	return {
+		suggestions,
+		billing,
 		today: kampalaToday(),
 		residency: {
 			id: r.id,
@@ -74,6 +79,7 @@ export const actions: Actions = {
 			if (running && !/^\d{4}-\d{2}$/.test(running)) throw new Invalid('Running since: a month, like 2025-03.');
 			const seen = text(f, 'updatedAt');
 			if (!seen) throw new Invalid('Reload the page and try again.');
+			const lineup = lineupFrom(f);
 
 			await prisma.$transaction(async (tx) => {
 				const { count } = await tx.residency.updateMany({
@@ -86,7 +92,7 @@ export const actions: Actions = {
 						endTime: time(f, 'endTime', 'Wrap'),
 						priceGate: money(f, 'priceGate', 'Gate price'),
 						register,
-						lineup: text(f, 'lineup'),
+						...(lineup !== undefined && { lineup }),
 						runningSince: running ? asDate(`${running}-01`) : null,
 						notes: text(f, 'notes'),
 						...(intent === 'deactivate' && { active: false }),
@@ -102,6 +108,6 @@ export const actions: Actions = {
 			console.error(e);
 			return fail(500, { error: 'The save failed. Nothing was written.' });
 		}
-		return { saved: intent ?? 'save' };
+		return { saved: intent ?? 'save', newNames: await unclassified(lineupFrom(f) ?? []) };
 	}
 };

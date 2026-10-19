@@ -3,6 +3,7 @@ import { prisma } from '#lib/server/prisma.js';
 import { asDate, isWeek, isoDate, kampalaDate, loadWeek } from '#lib/server/register.js';
 import { addDays, kampalaToday, nextMonday } from '#lib/build/week.js';
 import { callQueue } from '#lib/build/calls.js';
+import { unclassified } from '#lib/server/acts.js';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url }) => {
@@ -63,5 +64,6 @@ export const load: PageServerLoad = async ({ url }) => {
 		organisers
 	);
 
-	return { week, today, queue, gate, register: { venues: venueCount, numbers } };
+	const newActs = await unclassified((url.searchParams.get('newacts') ?? '').split('|').filter(Boolean));
+	return { newActs, week, today, queue, gate, register: { venues: venueCount, numbers } };
 };

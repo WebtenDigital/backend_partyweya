@@ -54,6 +54,10 @@ const int = (v) => (v == null ? null : Number.parseInt(v, 10));
 const bool = (v, fallback) => (v == null ? fallback : v.toUpperCase() === 'TRUE');
 // "Ice Prince;" → "Ice Prince"
 const trimList = (v) => v?.replace(/[;\s]+$/, '') || null;
+// A billed lineup as names, in order: "D Maestroz Band featuring Iryn Namubiru; Felicia"
+// → ['D Maestroz Band', 'Iryn Namubiru', 'Felicia'] — the same split as the acts migration.
+const names = (v) =>
+	(v ?? '').split(/\s*(?:;|,|\s+featuring\s+|\s+feat\.?\s+|\s+ft\.?\s+)\s*/i).map((n) => n.trim()).filter(Boolean);
 
 // The sheet's free-text sources onto the Source enum (same table as the
 // source_enum migration). Enum values pass through; anything else stops
@@ -122,6 +126,7 @@ const residencies = load('2_residency.csv').map((r) => ({
 	runningSince: r.runningSince,
 	active: bool(r.active, true),
 	notes: trimList(r.notes),
+	...('lineup' in r && { lineup: names(r.lineup) }),
 	// Confirmation fields only when the sheet carries them, so a re-import
 	// from an older export doesn't wipe confirmations recorded in the app.
 	...('lastConfirmed' in r && { lastConfirmed: r.lastConfirmed }),
@@ -142,7 +147,7 @@ const occurrences = load('3_occurrence.csv').map((o) => ({
 	priceGate: int(o.priceGate),
 	priceAdvance: int(o.priceAdvance),
 	priceNote: o.priceNote,
-	lineup: trimList(o.lineup),
+	lineup: names(o.lineup),
 	register: o.register,
 	claimType: o.claimType,
 	source: source(o.source, `Occurrence ${o.id}`),
@@ -178,7 +183,8 @@ const casts = {
 	runningSince: 'timestamp',
 	confirmedOn: 'timestamp',
 	lastConfirmed: 'timestamp',
-	areas: 'text[]'
+	areas: 'text[]',
+	lineup: 'text[]'
 };
 
 async function upsert(client, table, key, rows) {

@@ -2,6 +2,7 @@ import { redirect } from '@sveltejs/kit';
 import { prisma } from '#lib/server/prisma.js';
 import { isWeek, kampalaDate, loadWeek } from '#lib/server/register.js';
 import { SWEEP_DAYS, addDays, daysBetween, kampalaToday, nextMonday, shortDate } from '#lib/build/week.js';
+import { unclassified } from '#lib/server/acts.js';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url }) => {
@@ -48,7 +49,9 @@ export const load: PageServerLoad = async ({ url }) => {
 	}
 
 	const [venueCount, standingVenues, standingNights, chillNights, tested] = stats;
+	const newActs = await unclassified((url.searchParams.get('newacts') ?? '').split('|').filter(Boolean));
 	return {
+		newActs,
 		week,
 		weekEnd,
 		today,
