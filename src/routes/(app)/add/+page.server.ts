@@ -1,6 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { CALLER_NAME } from '$app/env/private';
 import { prisma, Category, Register } from '#lib/server/prisma.js';
+import { addPerks } from '#lib/server/perks.js';
 import { Invalid, failureMessage, money, oneOf, slug, text, time } from '#lib/server/forms.js';
 import { asDate, kampalaDate } from '#lib/server/register.js';
 import { PROVENANCE, REPEATS, isoDay, mondayOf, nextOn, type Repeat } from '#lib/build/add.js';
@@ -32,6 +33,7 @@ export const load: PageServerLoad = async ({ url }) => {
 				endTime: true,
 				priceGate: true,
 				register: true,
+				lineup: true,
 				runningSince: true
 			}
 		}),
@@ -104,6 +106,7 @@ export const actions: Actions = {
 				const endTime = time(f, 'end', 'Wrap');
 				const priceGate = money(f, 'gate', 'Gate price');
 				const register = oneOf(Register, text(f, 'register'), 'register');
+				const lineup = text(f, 'lineup');
 
 				// 3 · the answer to "does it repeat?" picks the table.
 				if (repeat === 'weekly') {
@@ -127,6 +130,7 @@ export const actions: Actions = {
 						priceGate,
 						register,
 						active: true,
+						...(lineup && { lineup }),
 						...(running && { runningSince: asDate(`${running}-01`) }),
 						lastConfirmed: confirmed ? now : null,
 						...confirmation
@@ -146,6 +150,8 @@ export const actions: Actions = {
 						if (await tx.residency.findUnique({ where: { id } })) id = `${id}-${day}`;
 						await tx.residency.create({ data: { id, venueId, ...data } });
 					}
+					// Offers are added, never replaced — in the same transaction as the night.
+					await addPerks(tx, { residencyId: id }, f);
 					const date = nextOn(today, day);
 					return { week: mondayOf(date), highlight: `${id}|${date}` };
 				}
@@ -177,6 +183,7 @@ export const actions: Actions = {
 								priceGate,
 								priceAdvance: money(f, 'advance', 'Advance price'),
 								register,
+								...(lineup && { lineup }),
 								status: confirmed ? ('CONFIRMED' as const) : ('LEAD' as const)
 							};
 				const fields = {
@@ -201,6 +208,8 @@ export const actions: Actions = {
 						data: { id, venueId, date: asDate(date), eventName, category, ...fields }
 					});
 				}
+				// A cancellation publishes nothing, so it carries no act or offers.
+				if (repeat !== 'cancelled') await addPerks(tx, { occurrenceId: id }, f);
 				return { week: mondayOf(date), highlight: repeat === 'cancelled' ? null : id };
 			});
 		} catch (e) {

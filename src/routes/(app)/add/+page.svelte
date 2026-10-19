@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { DAYS, PROVENANCE, REPEATS, isoDay, nextOn, type Provenance, type Repeat } from '#lib/build/add.js';
 	import { dayHeading, shillings } from '#lib/build/week.js';
+	import PerksEditor, { type PerkRow } from '#lib/components/PerksEditor.svelte';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -35,6 +36,10 @@
 	let gate = $state('');
 	let advance = $state('');
 	let register = $state('');
+	// The act and the night's offers — optional, so a flyer goes in once, in one pass.
+	let lineup = $state('');
+	let offers = $state<PerkRow[]>([]);
+	const offerCount = $derived(offers.filter((p) => p.label.trim()).length);
 	// 5 · provenance — no default, on purpose
 	let provenance = $state<Provenance | ''>('');
 	let source = $state('');
@@ -115,6 +120,7 @@
 					['startTime', ...c(start, 'text-vetted')],
 					['priceGate', gate || 'null'],
 					['register', ...c(register, REGISTER_TONE[register])],
+					['lineup', ...c(lineup.trim() || (updating ? existing?.lineup : null))],
 					['runningSince', ...c(runningSince)],
 					['lastConfirmed', prov?.confirms ? 'now()' : 'null', prov?.confirms ? 'text-vetted' : 'text-social'],
 					['claimType', ...c(claim)],
@@ -137,6 +143,7 @@
 							['priceGate', gate || 'null'] as [string, string],
 							['priceAdvance', advance || 'null'] as [string, string],
 							['register', ...c(register, REGISTER_TONE[register])] as [string, string, string],
+							['lineup', ...c(lineup.trim())] as [string, string, string],
 							['status', prov?.confirms ? 'CONFIRMED' : 'LEAD', prov?.confirms ? 'text-vetted' : 'text-social'] as [string, string, string]
 						]),
 				['claimType', ...c(claim)],
@@ -322,7 +329,7 @@
 			<!-- 4 · When, and what it costs -->
 			{#if repeat !== 'cancelled'}
 				<section class="panel space-y-3">
-					<h2 class="step"><span>4</span>When, and what it costs</h2>
+					<h2 class="step"><span>4</span>When, what it costs, and what else is on</h2>
 					<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
 						<label class="field"><span>Starts</span><input name="start" class="input" placeholder="19:00" bind:value={start} />
 							{#if !start}<span class="text-social">Required to publish — a row without one cannot be forwarded.</span>{/if}
@@ -349,6 +356,26 @@
 							call and it becomes a fact.
 						</p>
 					{/if}
+
+					<div class="space-y-3 border-t border-line pt-3">
+						<label class="field">
+							<span>The act <span class="text-dim/70">— optional</span></span>
+							<input name="lineup" class="input h-11" placeholder="A resident band or DJ. Leave empty if it rotates." bind:value={lineup} />
+							<span>
+								{#if weekly || !repeat}On a standing night this is the <em>resident</em> act, so it fills every week. A one-week guest belongs on an override, not here.
+								{:else}This date’s act. {repeat === 'override' && replaces?.lineup ? `Leave it empty to show the usual: ${replaces.lineup}.` : ''}{/if}
+								{#if updating}Left as it is if you leave this empty.{/if}
+							</span>
+						</label>
+						<div class="space-y-2">
+							<p class="text-xs text-dim">Offers that night <span class="text-dim/70">— optional</span></p>
+							<PerksEditor bind:rows={offers} today={data.today} />
+							<p class="text-[11px] text-dim">
+								Give anything seasonal an end date. A promo with none inherits the night’s last-confirmed date, and goes stale with it.
+								{#if updating || existing}Offers here are added to the night’s existing ones — nothing you don’t retype is removed.{/if}
+							</p>
+						</div>
+					</div>
 				</section>
 			{/if}
 
@@ -393,16 +420,24 @@
 						{#each preview.rows as [k, v, tone] (k)}
 							<div class="flex justify-between gap-3"><dt class="text-dim">{k}</dt><dd class="truncate {tone ?? ''}">{v}</dd></div>
 						{/each}
+						{#if repeat !== 'cancelled'}
+							<div class="flex justify-between gap-3 border-t border-line pt-1">
+								<dt class="text-dim">+ Perk</dt>
+								<dd class={offerCount ? 'text-chill' : 'text-dim'}>{offerCount} {offerCount === 1 ? 'row' : 'rows'}</dd>
+							</div>
+						{/if}
 					</dl>
 					<p class="mt-3 text-xs text-dim">
 						{#if weekly}
 							A rule, so it fills every {dayName === 'week' ? 'week' : dayName} from now on. No dated rows are written.
+							{#if offerCount}Offers are saved as child rows on the rule{updating ? ', added to the ones it already has' : ''}, and expire on their own dates.{/if}
 						{:else if repeat === 'override'}
 							Replaces the standing night for that date only.
 						{:else if repeat === 'cancelled'}
 							Takes the standing night out for that date only.
 						{:else}
 							One dated row. If one with the same name and date exists, it is updated instead.
+							{#if offerCount}Offers are saved as child rows on it, added to any it already has.{/if}
 						{/if}
 					</p>
 				{:else}

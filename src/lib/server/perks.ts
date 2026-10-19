@@ -47,3 +47,28 @@ export async function savePerks(tx: Prisma.TransactionClient, parent: Parent, f:
 		}
 	}
 }
+
+/**
+ * Adding offers from "Add to the register": new rows only, never a replacement.
+ * Merging into an existing night must not delete offers the user didn't retype
+ * — they may be working from a flyer that mentions one. An offer already on
+ * the night (same kind, label and condition) isn't added twice. Returns how
+ * many rows were created.
+ */
+export async function addPerks(tx: Prisma.TransactionClient, parent: Parent, f: FormData) {
+	const perks = parsePerks(f);
+	if (!perks?.length) return 0;
+	const existing = await tx.perk.findMany({ where: parent, select: { kind: true, label: true, condition: true, sortOrder: true } });
+	const key = (p: { kind: string; label: string; condition: string | null }) =>
+		[p.kind, p.label.trim().toLowerCase(), (p.condition ?? '').trim().toLowerCase()].join('|');
+	const seen = new Set(existing.map(key));
+	let order = existing.reduce((max, p) => Math.max(max, p.sortOrder + 1), 0);
+	let created = 0;
+	for (const { id: _id, sortOrder: _s, ...p } of perks) {
+		if (seen.has(key(p))) continue;
+		seen.add(key(p));
+		await tx.perk.create({ data: { ...parent, ...p, sortOrder: order++ } });
+		created++;
+	}
+	return created;
+}
