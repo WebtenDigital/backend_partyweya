@@ -146,6 +146,8 @@
 				{#if heldBack.length}· <span class="text-social">{heldBack.length} confirmed, no time</span>{/if}
 				{#if leads.length}· {plural(leads.length, 'lead')}{/if}
 				{#if changed.length}· {changed.length} changed{/if}
+				<span class="ml-3 inline-flex items-center gap-1.5"><span class="inline-block size-2.5 rounded-sm border border-line bg-panel"></span>standing</span>
+				<span class="ml-2 inline-flex items-center gap-1.5"><span class="inline-block size-2.5 rounded-sm border border-dated/40 bg-dated/20"></span><span class="text-dated">dated</span></span>
 			</p>
 
 			{#each days as day (day.date)}
@@ -167,7 +169,8 @@
 							{@const live = r.state === 'publishable'}
 							<article
 								id="row-{r.key}"
-								class="grid grid-cols-2 gap-x-4 gap-y-2 rounded-md border border-line bg-panel px-4 py-3 text-sm md:grid-cols-[minmax(0,1.6fr)_90px_90px_90px_110px_minmax(0,1.2fr)] md:items-center
+								class="grid grid-cols-2 gap-x-4 gap-y-2 rounded-md border px-4 py-3 text-sm md:grid-cols-[minmax(0,1.6fr)_90px_90px_90px_110px_minmax(0,1.2fr)] md:items-center
+									{r.kind === 'STANDING' ? 'border-line bg-panel' : 'border-dated/50 bg-dated/[0.14]'}
 									{live && r.register ? `border-l-4 ${REGISTER_EDGE[r.register]}` : 'border-l-4 border-l-line'}
 									{live || r.key === highlight ? '' : 'opacity-60'}
 									{r.key === highlight ? 'ring-2 ring-chill ring-offset-2 ring-offset-ink' : ''}"
@@ -177,7 +180,7 @@
 										<span class="font-semibold">{r.eventName}</span>
 										<span
 											class="rounded border px-1.5 py-px font-mono text-[10px] tracking-wider
-												{r.kind === 'OVERRIDE' ? 'border-social/50 text-social' : 'border-line text-dim'}"
+												{r.kind === 'STANDING' ? 'border-line text-dim' : 'border-dated/60 text-dated'}"
 										>
 											{r.kind}
 										</span>

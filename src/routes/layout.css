@@ -53,6 +53,8 @@
 	--color-social: #e8b04b;
 	--color-energy: #e5636f;
 	--color-vetted: #5ec48a;
+	/* dated rows (one-offs, overrides) vs standing nights */
+	--color-dated: #a98bf0;
 }
 
 @layer components {
