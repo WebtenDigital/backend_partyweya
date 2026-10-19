@@ -7,21 +7,29 @@ import { kampalaToday } from '#lib/build/week.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params }) => {
-	const r = await prisma.residency.findUnique({
-		where: { id: params.id },
-		include: {
-			venue: { select: { id: true, name: true, zoneName: true } },
-			organiser: { select: { name: true } },
-			perks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }
-		}
-	});
+	const [r, standing, chill, noted] = await Promise.all([
+		prisma.residency.findUnique({
+			where: { id: params.id },
+			include: {
+				venue: { select: { id: true, name: true, phone: true, whatsapp: true, zone: { select: { name: true, division: true } } } },
+				organiser: { select: { name: true, contactName: true, phone: true, whatsapp: true } },
+				perks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }
+			}
+		}),
+		prisma.residency.count({ where: { active: true } }),
+		prisma.residency.count({ where: { active: true, register: 'CHILL' } }),
+		// Standing nights whose act may still be sitting in an internal note.
+		prisma.residency.count({ where: { active: true, id: { not: params.id }, lineup: null, notes: { not: null } } })
+	]);
 	if (!r) error(404, 'No such standing night');
 	return {
 		today: kampalaToday(),
 		residency: {
 			id: r.id,
-			venue: r.venue,
-			organiser: r.organiser?.name ?? null,
+			venue: { id: r.venue.id, name: r.venue.name, phone: r.venue.phone, whatsapp: r.venue.whatsapp },
+			zone: r.venue.zone?.name ?? null,
+			division: r.venue.zone?.division ?? null,
+			organiser: r.organiser,
 			eventName: r.eventName,
 			category: r.category,
 			dayOfWeek: r.dayOfWeek,
@@ -33,8 +41,6 @@ export const load: PageServerLoad = async ({ params }) => {
 			runningSince: kampalaDate(r.runningSince)?.slice(0, 7) ?? null,
 			active: r.active,
 			notes: r.notes,
-			claimType: r.claimType,
-			source: r.source,
 			lastConfirmed: kampalaDate(r.lastConfirmed),
 			updatedAt: r.updatedAt.toISOString()
 		},
@@ -44,15 +50,17 @@ export const load: PageServerLoad = async ({ params }) => {
 			label: p.label,
 			condition: p.condition,
 			activeUntil: kampalaDate(p.activeUntil)
-		}))
+		})),
+		supply: { standing, chill, noted }
 	};
 };
 
 export const actions: Actions = {
-	// Editing the record is not a call: it changes no confirmation, claim or call
-	// cadence — only a saved call says the venue confirmed it.
+	// Saving the rule is not a call: it changes no confirmation, claim or call
+	// cadence — only a logged call says the venue confirmed it.
 	save: async ({ params, request }) => {
 		const f = await request.formData();
+		const intent = text(f, 'intent'); // 'deactivate' | 'reactivate' | null
 		try {
 			const eventName = text(f, 'eventName');
 			if (!eventName) throw new Invalid('The night needs its name.');
@@ -80,8 +88,9 @@ export const actions: Actions = {
 						register,
 						lineup: text(f, 'lineup'),
 						runningSince: running ? asDate(`${running}-01`) : null,
-						active: f.get('active') === 'on',
-						notes: text(f, 'notes')
+						notes: text(f, 'notes'),
+						...(intent === 'deactivate' && { active: false }),
+						...(intent === 'reactivate' && { active: true })
 					}
 				});
 				if (count === 0) throw new Invalid('This standing night changed since you loaded the page — reload to see the latest.');
@@ -93,6 +102,6 @@ export const actions: Actions = {
 			console.error(e);
 			return fail(500, { error: 'The save failed. Nothing was written.' });
 		}
-		return { saved: true };
+		return { saved: intent ?? 'save' };
 	}
 };

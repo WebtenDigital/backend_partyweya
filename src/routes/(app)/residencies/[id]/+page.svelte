@@ -1,130 +1,265 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
-	import PerksEditor from '#lib/components/PerksEditor.svelte';
+	import PerksEditor, { toRows, type PerkRow } from '#lib/components/PerksEditor.svelte';
 	import { DAYS } from '#lib/build/add.js';
-	import { daysBetween, offerStaleness, shortDate } from '#lib/build/week.js';
+	import { F5_WINDOW_DAYS, addDays, dayHeading, daysBetween, nextMonday, shortDate } from '#lib/build/week.js';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
 	const r = $derived(data.residency);
 
 	const CATEGORIES = ['LIVE_BAND', 'DJ', 'KARAOKE', 'QUIZ', 'ACOUSTIC', 'POETRY', 'COMEDY', 'BRUNCH', 'PAGEANT', 'CONCERT', 'SPORTS_SCREENING', 'THEMED_NIGHT', 'MOVIE_NIGHT', 'OTHER'];
+	const REGISTER_EDGE: Record<string, string> = { CHILL: 'border-l-chill', SOCIAL: 'border-l-social', HIGH_ENERGY: 'border-l-energy' };
+	const WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty'];
+
+	// Form state the preview reads live. Re-seeded from the server after every save.
+	const seed = () => ({
+		eventName: r.eventName,
+		day: String(r.dayOfWeek),
+		start: r.startTime ?? '',
+		register: r.register as string,
+		lineup: r.lineup ?? '',
+		notes: r.notes ?? ''
+	});
+	// svelte-ignore state_referenced_locally
+	let rows = $state<PerkRow[]>(toRows(data.perks));
+	// svelte-ignore state_referenced_locally
+	let fields = $state(seed());
+	let movedFrom = $state<string | null>(null);
+	let seeded = '';
+	$effect(() => {
+		if (data.residency.updatedAt === seeded) return;
+		seeded = data.residency.updatedAt;
+		rows = toRows(data.perks);
+		fields = seed();
+	});
+
+	// The week being assembled, and this rule's night in it.
+	const week = $derived(nextMonday(data.today));
+	const weekEnd = $derived(addDays(week, 6));
+	const night = $derived(addDays(week, Number(fields.day) - 1));
+	const shown = $derived(rows.filter((p) => p.label.trim() && (!p.activeUntil || p.activeUntil >= night)));
+
 	const confirmedAge = $derived(r.lastConfirmed ? daysBetween(r.lastConfirmed, data.today) : null);
+	const openEnded = $derived(rows.filter((p) => p.label.trim() && !p.activeUntil).length);
+	const stale = $derived(openEnded > 0 && (confirmedAge == null || confirmedAge > F5_WINDOW_DAYS));
+
+	// The act often sits in an internal note ("Featuring The Clan Band;"), where nothing public can read it.
+	const noteAsAct = (note: string) => note.replace(/^\s*(featuring|feat\.?|ft\.?)\s+/i, '').replace(/[;\s]+$/, '');
+	function moveNoteToAct() {
+		movedFrom = fields.notes;
+		fields.lineup = noteAsAct(fields.notes);
+		fields.notes = '';
+	}
+
 	let saving = $state(false);
+	let formEl: HTMLFormElement;
+	function onKey(e: KeyboardEvent) {
+		if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+			e.preventDefault();
+			formEl.requestSubmit();
+		}
+	}
+	const call = $derived(
+		r.organiser
+			? { who: 'ORGANISER', name: r.organiser.contactName ?? r.organiser.name, phone: r.organiser.phone }
+			: { who: 'VENUE', name: r.venue.name, phone: r.venue.phone }
+	);
+	const many = (n: number) => (n === 1 ? 'one' : (WORDS[n] ?? String(n)));
 </script>
 
+<svelte:window onkeydown={onKey} />
 <svelte:head><title>{r.eventName} · {r.venue.name}</title></svelte:head>
 
 <form
 	method="POST"
 	action="?/save"
+	bind:this={formEl}
 	use:enhance={() => {
 		saving = true;
 		return async ({ update }) => {
 			await update({ reset: false });
+			movedFrom = null;
 			saving = false;
 		};
 	}}
-	class="min-h-screen bg-ink pb-28 text-fg"
+	class="min-h-screen bg-ink text-fg"
 >
 	<input type="hidden" name="updatedAt" value={r.updatedAt} />
+
 	<header class="flex flex-wrap items-end justify-between gap-4 border-b border-line px-4 py-6 sm:px-6">
 		<div class="flex items-center gap-5">
 			<HomeLogo week={data.currentWeek} />
 			<div>
-				<p class="font-mono text-[11px] tracking-[0.2em] text-dim uppercase">Standing night · {r.venue.name}</p>
-				<h1 class="mt-1 text-2xl font-semibold tracking-tight">{r.eventName}</h1>
+				<a href="/venues/{r.venue.id}" class="font-mono text-[11px] tracking-[0.2em] text-chill uppercase">← {r.venue.name}</a>
+				<h1 class="mt-1 text-2xl font-semibold tracking-tight">{fields.eventName || r.eventName}</h1>
+				<p class="font-mono text-xs text-dim">
+					Every {DAYS[Number(fields.day)]} · {fields.start || 'no time'} · {[r.zone ?? 'NO ZONE', r.division].filter(Boolean).join(' · ')}
+					{#if !r.active}<span class="ml-2 rounded border border-energy/50 px-1.5 text-energy">STOPPED — on no week</span>{/if}
+				</p>
 			</div>
 		</div>
-		<nav class="flex flex-wrap gap-2 text-sm">
-			<a href="/calls/{r.venue.id}?residency={r.id}" class="btn">Log a call about it</a>
-			<a href="/venues/{r.venue.id}" class="btn">Venue</a>
-		</nav>
+		<div class="flex flex-wrap items-center gap-2">
+			{#if form?.error}<p class="max-w-xs text-sm text-energy">{form.error}</p>{/if}
+			{#if form?.saved && !saving}<p class="text-sm text-vetted">Saved ✓</p>{/if}
+			{#if r.active}
+				<button name="intent" value="deactivate" class="btn h-11" title="Takes it off every week; the record stays">Deactivate</button>
+			{:else}
+				<button name="intent" value="reactivate" class="btn h-11">Reactivate</button>
+			{/if}
+			<button class="btn-primary h-11" disabled={saving}>{saving ? 'Saving…' : 'Save the rule'}</button>
+		</div>
 	</header>
 
-	<div class="grid gap-6 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+	<div class="grid gap-6 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_320px]">
 		<main class="min-w-0 space-y-4">
 			<section class="panel space-y-3">
-				<h2 class="panel-title">The rule</h2>
-				<div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_200px]">
-					<label class="field"><span>Name, as they brand it</span><input name="eventName" class="input h-11" value={r.eventName} required /></label>
+				<h2 class="font-semibold">The rule</h2>
+				<div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_200px_180px]">
+					<label class="field"><span>Event name</span><input name="eventName" class="input h-11" bind:value={fields.eventName} required /></label>
 					<label class="field"><span>Category</span>
 						<select name="category" class="input h-11" value={r.category}>
 							{#each CATEGORIES as c (c)}<option value={c}>{c.replaceAll('_', ' ')}</option>{/each}
 						</select>
 					</label>
-				</div>
-				<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-					<label class="field"><span>Every</span>
-						<select name="dayOfWeek" class="input h-11" value={String(r.dayOfWeek)}>
+					<label class="field"><span>Night</span>
+						<select name="dayOfWeek" class="input h-11" bind:value={fields.day}>
 							{#each DAYS.slice(1) as d, i (d)}<option value={String(i + 1)}>{d}</option>{/each}
 						</select>
 					</label>
-					<label class="field"><span>Starts</span><input name="startTime" class="input h-11" placeholder="21:00" value={r.startTime ?? ''} /></label>
-					<label class="field"><span>Wraps</span><input name="endTime" class="input h-11" placeholder="02:00" value={r.endTime ?? ''} /></label>
-					<label class="field"><span>At the gate</span><input name="priceGate" class="input h-11" inputmode="numeric" placeholder="0 for free" value={r.priceGate ?? ''} /></label>
 				</div>
-				<div class="grid gap-3 sm:grid-cols-2">
+				<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+					<label class="field"><span>Starts</span><input name="startTime" class="input h-11" placeholder="21:00" bind:value={fields.start} /></label>
+					<label class="field"><span>Wraps</span><input name="endTime" class="input h-11" placeholder="—" value={r.endTime ?? ''} /></label>
+					<label class="field"><span>At the gate</span><input name="priceGate" class="input h-11" inputmode="numeric" placeholder="—" value={r.priceGate ?? ''} /></label>
 					<label class="field"><span>Register</span>
-						<select name="register" class="input h-11" value={r.register}>
-							<option value="CHILL">CHILL</option><option value="SOCIAL">SOCIAL</option><option value="HIGH_ENERGY">HIGH-ENERGY</option>
+						<select name="register" class="input h-11" bind:value={fields.register}>
+							<option value="CHILL">CHILL</option><option value="SOCIAL">SOCIAL</option><option value="HIGH_ENERGY">HIGH_ENERGY</option>
 						</select>
 					</label>
-					<label class="field"><span>Running since</span><input name="runningSince" type="month" class="input h-11" value={r.runningSince ?? ''} max={data.today.slice(0, 7)} /></label>
 				</div>
-				<label class="field"><span>Resident act — public, shown every week</span>
-					<input name="lineup" class="input h-11" placeholder="The Clan Band" value={r.lineup ?? ''} />
-				</label>
-				<label class="flex h-11 items-center gap-2 text-sm">
-					<input type="checkbox" name="active" class="size-5" checked={r.active} /> Still running — untick to take it off every week
-				</label>
+			</section>
+
+			<section class="panel space-y-3">
+				<h2 class="flex items-center gap-2 font-semibold">The act <span class="rounded-full border border-chill/50 px-2 py-px font-mono text-[9px] tracking-wider text-chill">NEW FIELD</span></h2>
+				<p class="text-xs text-dim">
+					A resident act is as stable as the start time, so it lives on the rule. Only name a week’s act in an override when
+					knowing it changes what you’d write.
+				</p>
+				<input name="lineup" class="input h-11" placeholder="The Clan Band" bind:value={fields.lineup} />
+				{#if movedFrom}
+					<p class="rounded-md border border-chill/40 bg-chill/5 px-3 py-2 text-xs text-chill">
+						→ Moved here from the internal note <em>“{movedFrom}”</em>, which nothing could read. Save the rule to keep it.
+						{#if data.supply.noted}
+							{many(data.supply.noted).replace(/^./, (c) => c.toUpperCase())} other standing night{data.supply.noted === 1 ? '' : 's'}
+							still carr{data.supply.noted === 1 ? 'ies' : 'y'} a note that may be their act.
+						{/if}
+					</p>
+				{:else if fields.notes.trim() && !fields.lineup.trim()}
+					<p class="flex flex-wrap items-center gap-2 rounded-md border border-chill/40 bg-chill/5 px-3 py-2 text-xs text-chill">
+						<span>The internal note says <em>“{fields.notes}”</em> — nothing public can read it. If that’s the act:</span>
+						<button type="button" class="rounded border border-chill/60 px-2 py-1 hover:bg-chill/10" onclick={moveNoteToAct}>Move it to the act</button>
+					</p>
+				{/if}
 			</section>
 
 			<section id="offers" class="panel scroll-mt-4 space-y-3">
-				<h2 class="panel-title">Offers</h2>
-				{#key r.updatedAt}
-					<PerksEditor perks={data.perks} today={data.today} staleness={offerStaleness(r.lastConfirmed, data.today)} />
-				{/key}
+				<h2 class="flex items-center gap-2 font-semibold">What else is on that night <span class="rounded-full border border-chill/50 px-2 py-px font-mono text-[9px] tracking-wider text-chill">NEW</span></h2>
+				<p class="text-xs text-dim">
+					Offers go stale faster than anything else here, and a wrong one costs more than a missing one. Each gets its own
+					expiry so a dead promo drops out instead of quietly outliving its truth.
+				</p>
+				<PerksEditor bind:rows today={data.today} {weekEnd} />
+				{#if stale}
+					<p class="rounded-md border border-social/50 bg-social/10 px-3 py-2 text-xs">
+						<span class="mr-1 text-social">!</span>
+						The {many(openEnded)} with no end date
+						{#if confirmedAge == null}
+							{openEnded === 1 ? 'has' : 'have'} <strong>never been confirmed</strong>.
+						{:else}
+							{openEnded === 1 ? 'was' : 'were'} last confirmed
+							<strong>{confirmedAge < 14 ? `${confirmedAge} days` : `${Math.round(confirmedAge / 7)} weeks`} ago</strong> — outside Rule F5’s window.
+						{/if}
+						Ask about {openEnded === 1 ? 'it' : 'them'} on the next call before publishing {openEnded === 1 ? 'it' : openEnded === 2 ? 'either' : 'any'}.
+					</p>
+				{/if}
 			</section>
 
-			<section class="panel space-y-2">
-				<h2 class="panel-title">Notes <span class="font-normal text-dim normal-case">— internal, never published</span></h2>
-				<textarea name="notes" rows="3" class="input">{r.notes ?? ''}</textarea>
+			<div class="flex items-center gap-3 py-2 font-mono text-[10px] tracking-[0.2em] text-dim uppercase">
+				<span class="h-px flex-1 bg-line"></span>Everything above goes out · everything below stays in<span class="h-px flex-1 bg-line"></span>
+			</div>
+
+			<section class="panel space-y-3">
+				<h2 class="font-semibold">Internal</h2>
+				<p class="text-xs text-dim">Never reaches <code class="font-mono">public_events</code>. Anything that would change how the next call goes.</p>
+				<div class="grid gap-3 sm:grid-cols-2">
+					<label class="field"><span>Running since{r.runningSince ? '' : ' — unknown, ask on the next call'}</span>
+						<input name="runningSince" type="month" class="input h-11" value={r.runningSince ?? ''} max={data.today.slice(0, 7)} />
+					</label>
+					<div class="field">
+						<span>Last confirmed</span>
+						<p class="input flex h-11 items-center {confirmedAge == null || confirmedAge > F5_WINDOW_DAYS ? 'text-social' : 'text-vetted'}">
+							{r.lastConfirmed ? `${shortDate(r.lastConfirmed)} ${r.lastConfirmed.slice(0, 4)}` : 'never'}
+						</p>
+					</div>
+				</div>
+				<label class="field"><span>Notes</span><textarea name="notes" rows="3" class="input" placeholder="—" bind:value={fields.notes}></textarea></label>
 			</section>
 		</main>
 
 		<aside class="space-y-4">
 			<section class="panel">
-				<h3 class="panel-title mb-3">Last confirmed</h3>
-				<p class="text-2xl font-semibold {confirmedAge == null || confirmedAge > 35 ? 'text-social' : 'text-vetted'}">
-					{r.lastConfirmed ? shortDate(r.lastConfirmed) : 'never'}
+				<h3 class="panel-title mb-3">How a week shows it</h3>
+				<div class="rounded-md border border-l-4 border-line bg-ink/40 p-3 {REGISTER_EDGE[fields.register]} {r.active ? '' : 'opacity-50'}">
+					<p class="font-mono text-[10px] tracking-wider text-dim">{dayHeading(night)}</p>
+					<p class="font-semibold">{fields.eventName}</p>
+					<p class="text-xs text-dim">{r.venue.name}{fields.lineup.trim() ? ` · ${fields.lineup.trim()}` : ''}</p>
+					{#if shown.length}
+						<div class="mt-2 flex flex-wrap gap-1">
+							{#each shown as p, i (i)}
+								{@const ending = !!p.activeUntil && p.activeUntil <= weekEnd}
+								<span class="rounded border px-1.5 py-px font-mono text-[10px] {ending ? 'border-social/60 text-social' : 'border-line text-fg/80'}">
+									{p.label.trim().toLowerCase()}{p.condition.trim() ? ` · ${p.condition.trim()}` : ''}
+								</span>
+							{/each}
+						</div>
+					{/if}
+				</div>
+				<p class="mt-3 text-xs text-dim">
+					{#if !r.active}Stopped, so it shows on no week. {/if}Perks are filtered against <strong class="text-fg">that row’s date</strong>, not
+					today — so one expiring Thursday shows on Wednesday and not on Saturday, inside the same week you’re assembling.
 				</p>
-				<p class="mt-1 text-xs text-dim">
-					{#if confirmedAge == null}
-						Nobody has confirmed this night yet. It stays a lead until a call does.
+			</section>
+
+			<section class="panel">
+				<h3 class="panel-title mb-3">Who to call about this</h3>
+				<div class="flex items-start justify-between rounded-md border border-line bg-ink/40 p-3">
+					<div>
+						<p class="text-sm">{call.name}</p>
+						<p class="font-mono text-xs {call.phone ? 'text-fg' : 'text-social'}">{call.phone ?? 'no number on file'}</p>
+					</div>
+					<span class="font-mono text-[10px] tracking-wider text-dim">{call.who}</span>
+				</div>
+				<p class="mt-3 text-xs text-dim">
+					{#if r.organiser}
+						{r.organiser.name} runs this night, so they own the fact — not {r.venue.name}. A manager’s “I think so?” is worse
+						than no answer, because it gets recorded as one.
 					{:else}
-						{confirmedAge} days ago{confirmedAge > 35 ? ' — past the monthly sweep, so it’s a lead again' : ''}.
-						{r.claimType ?? ''}{r.source ? ` · ${r.source}` : ''}
+						No organiser on this night, so the venue owns the fact. Where a promoter runs the night, the queue routes there
+						instead — a manager’s “I think so?” is worse than no answer, because it gets recorded as one.
 					{/if}
 				</p>
-				<p class="mt-3 text-xs text-dim">Editing here doesn’t confirm anything — only a logged call does.</p>
 			</section>
-			{#if r.organiser}
-				<section class="panel">
-					<h3 class="panel-title mb-2">Organiser</h3>
-					<p class="text-sm">{r.organiser} runs this night — calls about it go to them.</p>
-				</section>
-			{/if}
+
+			<section class="panel">
+				<h3 class="panel-title mb-2">Why perks matter here</h3>
+				<p class="text-xs text-fg/80">
+					They are often what makes a mood legible. <em>“Quiet terrace, half-price wine till 8”</em> is the Chill pitch more than
+					any category tag is — and Chill is currently {data.supply.chill === 0 ? 'zero' : data.supply.chill} across all
+					{many(data.supply.standing)} standing nights.
+				</p>
+			</section>
 		</aside>
 	</div>
-
-	<footer class="fixed inset-x-0 bottom-0 border-t border-line bg-panel/95 px-4 py-3 backdrop-blur sm:px-6">
-		{#if form?.error}<p class="mb-2 text-sm text-energy">{form.error}</p>{/if}
-		<div class="flex items-center gap-3">
-			{#if form?.saved}<p class="text-sm text-vetted">Saved ✓</p>{/if}
-			<a href="/build?week={data.currentWeek}" class="btn ml-auto h-11 leading-7">Back to the week</a>
-			<button class="btn-primary h-11" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
-		</div>
-	</footer>
 </form>

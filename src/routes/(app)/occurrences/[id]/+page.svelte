@@ -3,7 +3,7 @@
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
 	import PerksEditor from '#lib/components/PerksEditor.svelte';
 	import { mondayOf } from '#lib/build/add.js';
-	import { dayHeading, shortDate } from '#lib/build/week.js';
+	import { addDays, dayHeading, shortDate } from '#lib/build/week.js';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -86,7 +86,7 @@
 					</p>
 				{/if}
 				{#key o.updatedAt}
-					<PerksEditor perks={data.perks} today={data.today} />
+					<PerksEditor perks={data.perks} today={data.today} weekEnd={addDays(mondayOf(o.date), 6)} />
 				{/key}
 			</section>
 		</main>
