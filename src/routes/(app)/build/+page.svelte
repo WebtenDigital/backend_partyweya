@@ -101,6 +101,7 @@
 		<nav class="flex flex-wrap gap-2 text-sm">
 			<a href="/build?week={addDays(data.week, -7)}" class="btn">← Previous week</a>
 			<a href="/build?week={addDays(data.week, 7)}" class="btn">Next week →</a>
+			<a href="/calls?week={data.week}" class="btn">Call round</a>
 			<button
 				class="btn-primary"
 				disabled
@@ -346,7 +347,7 @@
 					{#each data.calls as c (c.venue)}
 						<li class="flex items-start justify-between gap-3 text-xs">
 							<div>
-								<p class="font-semibold">{c.venue}</p>
+								<a href="/calls/{c.id}?week={data.week}" class="font-semibold hover:underline">{c.venue}</a>
 								<p class="text-dim">{c.reasons.join(' · ')}</p>
 							</div>
 							<span class="shrink-0 rounded border border-line px-2 py-1 font-mono text-chill">{maskPhone(c.phone)}</span>
@@ -363,7 +364,7 @@
 						{#each gaps as g (g.key)}
 							<li class="flex items-start justify-between gap-3 text-xs">
 								<div>
-									<p class="font-semibold">{g.eventName}</p>
+									<a href="/calls/{g.venue.id}?{g.kind === 'STANDING' ? `residency=${g.key.split('|')[0]}` : `occurrence=${g.key}`}&week={data.week}" class="font-semibold hover:underline">{g.eventName}</a>
 									<p class={g.state === 'needs-time' ? 'text-social' : 'text-dim'}>
 										{g.venue.name} · {shortDate(g.date)} · {gapReason(g)}
 									</p>
