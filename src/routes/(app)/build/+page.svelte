@@ -59,7 +59,9 @@
 	const heldBack = $derived(data.rows.filter((r) => r.state === 'needs-time'));
 	const leads = $derived(data.rows.filter((r) => r.state === 'lead'));
 	const changed = $derived(data.rows.filter((r) => r.state === 'changed'));
-	const gaps = $derived(data.rows.filter((r) => r.state !== 'publishable'));
+	const stopped = $derived(data.rows.filter((r) => r.state === 'stopped'));
+	// Stopped nights aren't gaps: nobody needs to fix them.
+	const gaps = $derived(data.rows.filter((r) => r.state !== 'publishable' && r.state !== 'stopped'));
 	const failing = $derived(data.gate.checks.filter((c) => c.pass === false));
 
 	const zones = $derived.by(() => {
@@ -156,8 +158,10 @@
 				{#if heldBack.length}· <span class="text-social">{heldBack.length} confirmed, no time</span>{/if}
 				{#if leads.length}· {plural(leads.length, 'lead')}{/if}
 				{#if changed.length}· {changed.length} changed{/if}
+				{#if stopped.length}· <span class="text-energy/80">{stopped.length} stopped</span>{/if}
 				<span class="ml-3 inline-flex items-center gap-1.5"><span class="inline-block size-2.5 rounded-sm border border-line bg-panel"></span>standing</span>
 				<span class="ml-2 inline-flex items-center gap-1.5"><span class="inline-block size-2.5 rounded-sm border border-dated/40 bg-dated/20"></span><span class="text-dated">dated</span></span>
+				<span class="ml-2 inline-flex items-center gap-1.5"><span class="inline-block size-2.5 rounded-sm border border-dashed border-energy/50 bg-energy/10"></span><span class="text-energy/80">stopped</span></span>
 			</p>
 
 			{#each days as day (day.date)}
@@ -181,9 +185,11 @@
 							<article
 								id="row-{r.key}"
 								class="grid grid-cols-2 gap-x-4 gap-y-2 rounded-md border px-4 py-3 text-sm md:grid-cols-[minmax(0,1.6fr)_90px_90px_90px_110px_minmax(0,1.2fr)] md:items-center
-									{r.kind === 'STANDING' ? 'border-line bg-panel' : 'border-dated/50 bg-dated/[0.14]'}
-									{live && r.register ? `border-l-4 ${REGISTER_EDGE[r.register]}` : 'border-l-4 border-l-line'}
-									{live || r.key === highlight ? '' : 'opacity-60'}
+									{r.state === 'stopped'
+										? 'border-dashed border-energy/40 bg-energy/[0.05] text-energy/80'
+										: r.kind === 'STANDING' ? 'border-line bg-panel' : 'border-dated/50 bg-dated/[0.14]'}
+									{live && r.register ? `border-l-4 ${REGISTER_EDGE[r.register]}` : r.state === 'stopped' ? 'border-l-4 border-l-energy/40' : 'border-l-4 border-l-line'}
+									{live || r.state === 'stopped' || r.key === highlight ? '' : 'opacity-60'}
 									{r.key === highlight ? 'ring-2 ring-chill ring-offset-2 ring-offset-ink' : ''}"
 							>
 								<div class="col-span-2 min-w-0 md:col-span-1">
@@ -191,12 +197,12 @@
 										<a href={editor} class="font-semibold hover:underline">{r.eventName}</a>
 										<span
 											class="rounded border px-1.5 py-px font-mono text-[10px] tracking-wider
-												{r.kind === 'STANDING' ? 'border-line text-dim' : 'border-dated/60 text-dated'}"
+												{r.state === 'stopped' ? 'border-energy/50 text-energy' : r.kind === 'STANDING' ? 'border-line text-dim' : 'border-dated/60 text-dated'}"
 										>
-											{r.kind}
+											{r.state === 'stopped' ? 'STOPPED' : r.kind}
 										</span>
 									</p>
-									<p class="mt-0.5 text-fg/70">{r.venue.name}</p>
+									<p class="mt-0.5 {r.state === 'stopped' ? '' : 'text-fg/70'}">{r.venue.name}</p>
 									<p class="font-mono text-[10px] tracking-wider text-dim">{r.venue.zone ?? 'UNZONED'}</p>
 									{#if r.billing}<p class="mt-1 text-xs text-fg/80">{r.billing}</p>{/if}
 									<div class="mt-1 flex flex-wrap items-center gap-1">
@@ -254,7 +260,10 @@
 								</div>
 
 								<div class="col-span-2 font-mono text-[11px] leading-snug md:col-span-1">
-									{#if r.state === 'lead'}
+									{#if r.state === 'stopped'}
+										<p>STOPPED</p>
+										<p class="opacity-80">not published · reactivate on its record</p>
+									{:else if r.state === 'lead'}
 										<p class="text-dim">LEAD</p>
 									{:else if r.state === 'changed'}
 										<p class="text-social">CHANGED</p>

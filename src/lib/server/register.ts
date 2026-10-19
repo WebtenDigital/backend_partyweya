@@ -49,8 +49,9 @@ const venueIn = (v: VenueRow): VenueIn => ({
 export async function loadWeek(week: string) {
 	const weekEnd = addDays(week, 6);
 	const [residencies, occurrences] = await Promise.all([
+		// Stopped nights too: the week shows them, coloured apart. Callers that act on
+		// the roster (calls, sweeps) use `residencies`, which is the active ones only.
 		prisma.residency.findMany({
-			where: { active: true },
 			include: { venue: { include: { zone: true } }, perks: true }
 		}),
 		prisma.occurrence.findMany({
@@ -76,6 +77,7 @@ export async function loadWeek(week: string) {
 				source: r.source,
 				lastConfirmed: kampalaDate(r.lastConfirmed),
 				lineup: r.lineup,
+				active: r.active,
 				perks: r.perks.map(perkIn)
 			})
 		),
@@ -105,5 +107,5 @@ export async function loadWeek(week: string) {
 	const lines = await billings(rows.map((r) => r.lineup));
 	for (const r of rows) r.billing = r.lineup.length ? (lines.get(billingKey(r.lineup)) ?? r.lineup.join(', ')) : null;
 
-	return { weekEnd, residencies, rows, gate: gate(week, rows) };
+	return { weekEnd, residencies: residencies.filter((r) => r.active), rows, gate: gate(week, rows) };
 }

@@ -55,6 +55,7 @@ export interface ResidencyIn {
 	source: string | null;
 	lastConfirmed: string | null; // YYYY-MM-DD
 	lineup: string[]; // the resident billing, in order
+	active: boolean; // stopped nights still show on the week, coloured apart, and never publish
 	perks: PerkIn[];
 }
 
@@ -77,7 +78,7 @@ export interface OccurrenceIn {
 	perks: PerkIn[];
 }
 
-export type RowState = 'publishable' | 'needs-time' | 'lead' | 'changed';
+export type RowState = 'publishable' | 'needs-time' | 'lead' | 'changed' | 'stopped';
 
 export interface Row {
 	key: string;
@@ -189,7 +190,7 @@ export function buildWeek(
 			continue;
 		}
 		const confirmed =
-			r.lastConfirmed != null && daysBetween(r.lastConfirmed, weekStart) <= SWEEP_DAYS;
+			r.active && r.lastConfirmed != null && daysBetween(r.lastConfirmed, weekStart) <= SWEEP_DAYS;
 		rows.push({
 			key: `${r.id}|${date}`,
 			date,
@@ -208,7 +209,7 @@ export function buildWeek(
 			claimType: r.claimType,
 			source: r.source,
 			checkedOn: r.lastConfirmed,
-			state: stateOf(confirmed, r.startTime, r.register),
+			state: r.active ? stateOf(confirmed, r.startTime, r.register) : 'stopped',
 			missing: missingOf(r.startTime, r.priceGate, r.register)
 		});
 	}

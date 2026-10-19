@@ -107,7 +107,7 @@
 				<h1 class="mt-1 text-2xl font-semibold tracking-tight">{fields.eventName || r.eventName}</h1>
 				<p class="font-mono text-xs text-dim">
 					Every {DAYS[Number(fields.day)]} · {fields.start || 'no time'} · {[r.zone ?? 'NO ZONE', r.division].filter(Boolean).join(' · ')}
-					{#if !r.active}<span class="ml-2 rounded border border-energy/50 px-1.5 text-energy">STOPPED — on no week</span>{/if}
+					{#if !r.active}<span class="ml-2 rounded border border-energy/50 px-1.5 text-energy">STOPPED — never published</span>{/if}
 				</p>
 			</div>
 		</div>
@@ -115,7 +115,7 @@
 			{#if form?.error}<p class="max-w-xs text-sm text-energy">{form.error}</p>{/if}
 			{#if form?.saved && !saving}<p class="text-sm text-vetted">Saved ✓</p>{/if}
 			{#if r.active}
-				<button name="intent" value="deactivate" class="btn h-11" title="Takes it off every week; the record stays">Deactivate</button>
+				<button name="intent" value="deactivate" class="btn h-11" title="Keeps it on the week, coloured apart, and stops it publishing">Deactivate</button>
 			{:else}
 				<button name="intent" value="reactivate" class="btn h-11">Reactivate</button>
 			{/if}
@@ -242,7 +242,7 @@
 					{/if}
 				</div>
 				<p class="mt-3 text-xs text-dim">
-					{#if !r.active}Stopped, so it shows on no week. {/if}Perks are filtered against <strong class="text-fg">that row’s date</strong>, not
+					{#if !r.active}Stopped: it still shows on the week, coloured apart, and is never published. {/if}Perks are filtered against <strong class="text-fg">that row’s date</strong>, not
 					today — so one expiring Thursday shows on Wednesday and not on Saturday, inside the same week you’re assembling.
 				</p>
 			</section>
