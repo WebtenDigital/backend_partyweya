@@ -26,3 +26,6 @@ vite.config.ts.timestamp-*
 
 # Prisma
 /src/generated
+
+# Register exports (internal: contacts, notes)
+/data

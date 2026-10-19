@@ -53,6 +53,7 @@ enum Category {
   BRUNCH
   PAGEANT
   CONCERT
+  MOVIE_NIGHT
   OTHER
 }
 
@@ -90,16 +91,27 @@ enum PostType {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+//  ZONE — the zone map. Each zone sits inside exactly one division.
+//  Not yet a foreign key from Venue; switch to one once the map is settled.
+// ─────────────────────────────────────────────────────────────────────
+
+model Zone {
+  name     String @id
+  division String
+}
+
+// ─────────────────────────────────────────────────────────────────────
 //  VENUE — durable. This is the asset that compounds.
 // ─────────────────────────────────────────────────────────────────────
 
 model Venue {
   id   String @id @default(cuid())
   name String @unique // exactly as the venue brands itself (feeds the venue tag)
-  slug String @unique // for website URLs
 
-  zone String // the 7-zone map, or "Outside Kampala"
-  area String // colloquial landmark: Bugolobi, Nakulabye, Kansanga
+  location String? // street-level directions, as a punter would give them
+  areas    String[] @default([]) // colloquial landmarks: Bugolobi, Nakulabye, Kansanga
+  zone     String? //  one of the Zone rows; null until placed
+  division String? // the zone's division (Nakawa, Kira MC, "Outside Kampala region")
 
   // ── everything above is public-safe. everything below is internal only. ──
 
@@ -118,13 +130,13 @@ model Venue {
 
   lastContacted  DateTime?
   nextContactDue DateTime? // set by the cadence tier
-  notes          String?
+  notes          String? // includes the sheet's "check" flags from the import
 
   residencies Residency[]
   occurrences Occurrence[]
 
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @default(now()) @updatedAt
 
   @@index([zone])
 }
@@ -144,23 +156,24 @@ model Residency {
   eventName String
   category  Category
   dayOfWeek Int // 1 = Monday … 7 = Sunday
-  startTime String // "19:00" — local wall-clock, no timezone arithmetic
+  startTime String? // "19:00" — local wall-clock, no timezone arithmetic
   endTime   String?
 
-  costGate    Int?
-  costAdvance Int?
-  register    Register
+  priceGate    Int?
+  priceAdvance Int?
+  register     Register
 
   recurrence   Recurrence @default(WEEKLY)
   runningSince DateTime? // the durability signal: a year beats a month
   active       Boolean    @default(true)
 
   lastConfirmed DateTime? // drives the monthly sweep
+  notes         String? //   hosts, house bands, rotating guest DJs
 
   occurrences Occurrence[]
 
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @default(now()) @updatedAt
 
   @@index([dayOfWeek, active])
 }
@@ -188,10 +201,11 @@ model Occurrence {
   startTime String? // nullable while LEAD; the public view requires it
   endTime   String?
 
-  costGate    Int?
-  costAdvance Int?
-  lineup      String? // named acts — feeds the transferred claim
-  register    Register?
+  priceGate    Int?
+  priceAdvance Int?
+  priceNote    String? // tiers as advertised: "165K PRE | 190K AT THE GATE"
+  lineup       String? // named acts — feeds the transferred claim
+  register     Register?
 
   claimType ClaimType? // what PartyWeya is allowed to say about this row
   source    String? //    "called venue" | "flyer" | "audience suggestion" | …
@@ -203,7 +217,7 @@ model Occurrence {
   publications Publication[]
 
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @default(now()) @updatedAt
 
   @@unique([venueId, date, eventName])
   @@index([date, status])
