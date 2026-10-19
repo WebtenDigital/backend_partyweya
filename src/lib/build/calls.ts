@@ -19,6 +19,7 @@ export interface QueueVenue {
 	zone: string | null;
 	phone: string | null;
 	conversationTest: string | null;
+	updatedAt?: string; // for the queue's inline phone save
 }
 
 export interface QueueResidency {

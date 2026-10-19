@@ -68,9 +68,9 @@ export const actions: Actions = {
 			if (!prov) throw new Invalid('Say where this came from — there is no default.');
 			const source = text(f, 'source') ?? prov.sources[0].key;
 			if (!prov.sources.some((s) => s.key === source)) throw new Invalid('That source doesn’t match the answer.');
-			const vetted = f.get('vetted') === 'on';
-			if (vetted && prov.key !== 'attended') throw new Invalid('VETTED needs attendance; nothing else can carry it.');
-			const claimType = vetted ? 'VETTED' : prov.claim;
+			// The source decides the claim. No form can produce VETTED.
+			if (f.has('vetted') || f.has('claimType')) throw new Invalid('The claim comes from the source; it can’t be set here.');
+			const claimType = prov.claim;
 			const confirmed = prov.confirms;
 
 			const repeat = REPEATS.find((r) => r.key === text(f, 'repeat'))?.key as Repeat | undefined;
@@ -97,7 +97,7 @@ export const actions: Actions = {
 				}
 
 				const confirmation = {
-					claimType: claimType as 'FACTUAL' | 'VETTED' | null,
+					claimType,
 					source: source as never
 				};
 				const startTime = time(f, 'start', 'Start');

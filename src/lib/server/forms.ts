@@ -55,3 +55,14 @@ export function failureMessage(e: unknown) {
 	if (known) return CONSTRAINTS[known];
 	return null;
 }
+
+/** A phone number as typed, tidied: digits, spaces, an optional leading +; 9–15 digits. */
+export const phone = (f: FormData, k: string) => {
+	const v = text(f, k);
+	if (v == null) return null;
+	const tidy = v.replace(/[-().]/g, ' ').replace(/\s+/g, ' ').trim();
+	const digits = tidy.replace(/\D/g, '');
+	if (!/^\+?[\d ]+$/.test(tidy) || digits.length < 9 || digits.length > 15)
+		throw new Invalid('That doesn’t look like a phone number — 9 to 15 digits, like 0772 123456 or +256 772 123456.');
+	return tidy;
+};

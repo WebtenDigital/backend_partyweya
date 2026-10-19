@@ -32,7 +32,7 @@ export const PROVENANCE: {
 		sources: [{ key: 'TICKETING', label: 'a ticketing listing' }, { key: 'SOCIAL_MEDIA', label: 'their social post' }, { key: 'FLYER', label: 'a flyer or poster' }, { key: 'PRESS', label: 'the press' }] },
 	{ key: 'suggested', label: 'Someone suggested it', effect: 'no claim · needs a call', confirms: false, claim: null,
 		sources: [{ key: 'AUDIENCE', label: 'a reader' }] },
-	{ key: 'attended', label: 'I was there', effect: 'can carry VETTED', confirms: true, claim: 'FACTUAL',
+	{ key: 'attended', label: 'I was there', effect: 'FACTUAL · confirmed · logs attendance', confirms: true, claim: 'FACTUAL',
 		sources: [{ key: 'ATTENDED', label: 'attendance' }] }
 ];
 

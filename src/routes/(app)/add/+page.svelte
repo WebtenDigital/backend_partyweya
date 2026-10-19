@@ -38,7 +38,6 @@
 	// 5 · provenance — no default, on purpose
 	let provenance = $state<Provenance | ''>('');
 	let source = $state('');
-	let vetted = $state(false);
 
 	let saving = $state(false);
 	let formEl: HTMLFormElement;
@@ -65,7 +64,6 @@
 	// Pick the source sub-option and the night being replaced sensibly as answers change.
 	$effect(() => {
 		if (prov && !prov.sources.some((s) => s.key === source)) source = prov.sources[0].key;
-		if (provenance !== 'attended') vetted = false;
 	});
 	$effect(() => {
 		if ((repeat === 'override' || repeat === 'cancelled') && !nights.some((r) => r.id === residencyId)) {
@@ -102,7 +100,7 @@
 		if (!start || !register) return { text: `needs ${!start ? 'a time' : 'a register'}`, tone: 'text-social' };
 		return { text: 'publishable', tone: 'text-vetted' };
 	});
-	const claim = $derived(vetted ? 'VETTED' : prov?.claim ?? null);
+	const claim = $derived(prov?.claim ?? null);
 
 	const preview = $derived.by((): { op: string; rows: [string, string, string?][] } => {
 		const v = venueId || (newName ? slug(newName) : '—');
@@ -383,12 +381,6 @@
 				{:else if prov}
 					<input type="hidden" name="source" value={source} />
 				{/if}
-				{#if provenance === 'attended'}
-					<label class="flex items-center gap-2 text-sm">
-						<input type="checkbox" name="vetted" bind:checked={vetted} />
-						<span>Claim it <span class="font-mono text-vetted">VETTED</span> — PartyWeya was in the room and judged it.</span>
-					</label>
-				{/if}
 			</section>
 		</main>
 
@@ -440,8 +432,8 @@
 			<section class="panel">
 				<h3 class="panel-title mb-2">Not offered here</h3>
 				<p class="text-xs text-fg/80">
-					<span class="text-vetted">VETTED</span> appears only when the source is “I was there”. Nothing typed into a form
-					can make PartyWeya’s own judgement.
+					<span class="text-vetted">VETTED</span> isn’t offered by any form. “I was there” records the attendance; the claim
+					that PartyWeya judged the room isn’t something typed into a field.
 				</p>
 			</section>
 		</aside>

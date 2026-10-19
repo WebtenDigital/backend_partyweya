@@ -10,7 +10,7 @@ import {
 } from '#lib/server/prisma.js';
 import { asDate, isWeek, isoDate, kampalaDate } from '#lib/server/register.js';
 import { CADENCE, Q6 } from '#lib/build/calls.js';
-import { Invalid, failureMessage, money, oneOf, slug, text, time } from '#lib/server/forms.js';
+import { Invalid, failureMessage, money, oneOf, phone, slug, text, time } from '#lib/server/forms.js';
 import { kampalaToday, nextMonday } from '#lib/build/week.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -110,15 +110,18 @@ export const actions: Actions = {
 			const register = test ? Q6.find((q) => q.test === test)!.register : null;
 			const cadence = CADENCE.find((c) => c.key === text(f, 'cadence')) ?? CADENCE[0];
 			const nextCall = new Date(now);
-			nextCall.setDate(nextCall.getDate() + (reached ? cadence.days : outcome === 'call-back' ? 1 : 2));
+			// Reached: the cadence. No answer or call back: try again tomorrow.
+			nextCall.setDate(nextCall.getDate() + (reached ? cadence.days : 1));
 
 			const venue = await prisma.venue.findUnique({
 				where: { id: params.venueId },
-				select: { id: true, notes: true }
+				select: { id: true, notes: true, phone: true }
 			});
 			if (!venue) throw new Invalid('No such venue');
 
 			const comingUp = text(f, 'comingUp');
+			const newPhone = f.has('phone') ? phone(f, 'phone') : venue.phone;
+			const phoneChanged = newPhone !== venue.phone;
 			const confirmed = { claimType: claimType as 'FACTUAL' | 'TRANSFERRED', source };
 
 			await prisma.$transaction(async (tx) => {
@@ -129,7 +132,10 @@ export const actions: Actions = {
 						// Only fields the form sent, so a partial post never blanks the rest.
 						...(f.has('contactName') && { contactName: text(f, 'contactName') }),
 						...(f.has('contactRole') && { contactRole: oneOf(ContactRole, text(f, 'contactRole'), 'role') }),
-						...(f.has('phone') && { phone: text(f, 'phone') }),
+						...(f.has('phone') && { phone: newPhone }),
+						// Reached on the number on file: it's verified. A number changed during the
+						// call hasn't been answered yet, so it starts unverified.
+						...(phoneChanged ? { phoneVerifiedAt: null } : reached && venue.phone ? { phoneVerifiedAt: now } : {}),
 						...(f.has('phone') && { whatsapp: f.get('whatsapp') === 'on' }),
 						...(f.has('bestTime') && { bestTimeToReach: text(f, 'bestTime') }),
 						nextContactDue: nextCall,
@@ -158,9 +164,10 @@ export const actions: Actions = {
 					await tx.residency.update({
 						where: { id, venueId: venue.id },
 						data: {
-							startTime: time(f, 's_start', 'Start'),
-							endTime: time(f, 's_end', 'Wrap'),
-							priceGate: money(f, 's_gate', 'Gate price'),
+							// Only what the call supplied; a blank field leaves the rule's value alone.
+							...(text(f, 's_start') && { startTime: time(f, 's_start', 'Start') }),
+							...(text(f, 's_end') && { endTime: time(f, 's_end', 'Wrap') }),
+							...(text(f, 's_gate') && { priceGate: money(f, 's_gate', 'Gate price') }),
 							lastConfirmed: now,
 							...confirmed
 						}

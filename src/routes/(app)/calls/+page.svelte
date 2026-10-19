@@ -1,10 +1,12 @@
 <script lang="ts">
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
+	import { enhance } from '$app/forms';
 	import { GROUPS, type GroupKey } from '#lib/build/calls.js';
 	import { addDays, shortDate } from '#lib/build/week.js';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
+	let phoneErrors = $state<Record<string, string>>({});
 
 	const EDGE: Record<GroupKey, string> = {
 		'this-week': 'border-l-energy',
@@ -51,6 +53,7 @@
 		<nav class="flex flex-wrap gap-2 text-sm">
 			<a href="/calls?week={addDays(data.week, -7)}" class="btn">←</a>
 			<a href="/calls?week={addDays(data.week, 7)}" class="btn">→</a>
+			<a href="/venues" class="btn">Venues</a>
 			<a href="/add" class="btn" title="Add to the register">+ Add</a>
 			<a href="/build?week={data.week}" class="btn">Sunday Build →</a>
 		</nav>
@@ -70,8 +73,8 @@
 				The register holds {data.register.venues} venues and {data.register.numbers}
 				{data.register.numbers === 1 ? 'number' : 'numbers'}.
 				{#if missingNumbers === data.queue.length}The call round cannot start.{/if}
-				Finding numbers is desk research, not calling — venue pages, Instagram bios, Google listings. Open a venue
-				and save the number with “No answer” or “Nothing to log”.
+				Finding numbers is desk research, not calling — venue pages, Instagram bios, Google listings. Type a number
+				straight into its row and press Enter, or work through <a href="/venues" class="text-chill underline">all venues</a>.
 			</p>
 		</div>
 	{/if}
@@ -94,24 +97,48 @@
 					</div>
 					<div class="space-y-2">
 						{#each g.rows as row (row.venue.id)}
-							<a
-								href="/calls/{row.venue.id}{row.items[0].href}&week={data.week}"
-								class="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 rounded-md border border-l-4 border-line bg-panel px-4 py-3 text-sm hover:border-dim sm:grid-cols-[minmax(0,1fr)_150px_110px_60px] sm:items-center {EDGE[g.key]}"
+							{@const href = `/calls/${row.venue.id}${row.items[0].href}&week=${data.week}`}
+							<div
+								class="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 rounded-md border border-l-4 border-line bg-panel px-4 py-3 text-sm hover:border-dim sm:grid-cols-[minmax(0,1fr)_150px_190px_60px] sm:items-center {EDGE[g.key]}"
 							>
-								<div class="min-w-0">
-									<p class="font-semibold">{row.venue.name}</p>
+								<a {href} class="min-w-0">
+									<p class="font-semibold hover:underline">{row.venue.name}</p>
 									{#each row.items as item (item.text)}
 										<p class="text-xs text-dim">{item.text}</p>
 									{/each}
-								</div>
+								</a>
 								<span class="font-mono text-[10px] tracking-wider {row.venue.zone ? 'text-dim' : 'text-social'}">
 									{row.venue.zone ?? 'NO ZONE'}
 								</span>
-								<span class="font-mono text-xs {row.venue.phone ? 'text-fg' : 'text-social'}">
-									{row.venue.phone ?? 'no number'}
-								</span>
-								<span class="font-mono text-[10px] tracking-wider text-chill">{row.askQ6 ? 'ASK Q6' : ''}</span>
-							</a>
+								<!-- A number found by desk research saves here; it is not a call. -->
+								<form
+									method="POST"
+									action="/venues?/contact"
+									class="col-span-2 sm:col-span-1"
+									use:enhance={() => {
+										phoneErrors[row.venue.id] = '';
+										return async ({ result, update }) => {
+											if (result.type === 'failure') phoneErrors[row.venue.id] = String(result.data?.error ?? 'Not saved');
+											else await update();
+										};
+									}}
+								>
+									<input type="hidden" name="id" value={row.venue.id} />
+									<input type="hidden" name="updatedAt" value={row.venue.updatedAt} />
+									<input
+										name="phone"
+										type="tel"
+										inputmode="tel"
+										autocomplete="off"
+										value={row.venue.phone ?? ''}
+										placeholder="no number — add"
+										aria-label="Phone for {row.venue.name}"
+										class="input h-11 font-mono text-xs {row.venue.phone ? '' : 'placeholder:text-social'}"
+									/>
+									{#if phoneErrors[row.venue.id]}<p class="mt-1 text-[11px] text-energy">{phoneErrors[row.venue.id]}</p>{/if}
+								</form>
+								<a {href} class="font-mono text-[10px] tracking-wider text-chill">{row.askQ6 ? 'ASK Q6' : ''}</a>
+							</div>
 						{/each}
 					</div>
 				</section>

@@ -154,6 +154,7 @@ model Venue {
   contactName     String?
   contactRole     ContactRole?
   phone           String?
+  phoneVerifiedAt DateTime? // set when a call reaches someone; cleared when the number changes
   whatsapp        Boolean      @default(false)
   bestTimeToReach String? //   nightlife staff are not morning people
 

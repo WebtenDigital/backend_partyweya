@@ -27,12 +27,12 @@ export const load: PageServerLoad = async ({ url }) => {
 	const venueIds = new Set([...residencies.map((r) => r.venueId), ...occurrences.map((o) => o.venueId)]);
 	const venues = await prisma.venue.findMany({
 		where: { id: { in: [...venueIds] } },
-		select: { id: true, name: true, phone: true, conversationTest: true, zoneName: true }
+		select: { id: true, name: true, phone: true, conversationTest: true, zoneName: true, updatedAt: true }
 	});
 
 	const queue = callQueue(
 		week,
-		venues.map((v) => ({ ...v, zone: v.zoneName })),
+		venues.map((v) => ({ ...v, zone: v.zoneName, updatedAt: v.updatedAt.toISOString() })),
 		residencies.map((r) => ({
 			id: r.id,
 			venueId: r.venueId,
