@@ -71,6 +71,21 @@ enum ConversationTest {
   NO //                → HIGH_ENERGY
 }
 
+// Where a fact came from. A vocabulary rather than free text so the VETTED
+// rule is exhaustive ("only ATTENDED") instead of a blocklist of spellings.
+enum Source {
+  ATTENDED //      PartyWeya was in the room. The ONLY source that can carry VETTED.
+  OWNER //         the venue owner or management said so
+  MANAGER
+  PROMOTER //      the organiser running the night
+  AGENT //         a booking agent — pair with organiserId
+  TICKETING //     Quicket, Mticket — a listing, not a judgement
+  SOCIAL_MEDIA //  the venue's or organiser's own post
+  FLYER
+  PRESS
+  AUDIENCE //      a reader told us. Lowest trust; always needs a call.
+}
+
 enum ContactRole {
   MANAGER
   MARKETING
@@ -272,7 +287,7 @@ model Occurrence {
   register Register?
 
   claimType ClaimType? // what PartyWeya is allowed to say about this row
-  source    String? //    "Owner" | "Quicket" | "Social Media" | "Agent (Kellen)"
+  source    Source? //    where the fact came from; only ATTENDED can carry VETTED
 
   status      OccurrenceStatus @default(LEAD)
   confirmedOn DateTime?

@@ -55,6 +55,26 @@ const bool = (v, fallback) => (v == null ? fallback : v.toUpperCase() === 'TRUE'
 // "Ice Prince;" → "Ice Prince"
 const trimList = (v) => v?.replace(/[;\s]+$/, '') || null;
 
+// The sheet's free-text sources onto the Source enum (same table as the
+// source_enum migration). Enum values pass through; anything else stops
+// the import rather than being guessed.
+const SOURCES = ['ATTENDED', 'OWNER', 'MANAGER', 'PROMOTER', 'AGENT', 'TICKETING', 'SOCIAL_MEDIA', 'FLYER', 'PRESS', 'AUDIENCE'];
+function source(v, id) {
+	if (v == null || SOURCES.includes(v)) return v;
+	const s = v.toLowerCase();
+	if (['attended', 'partyweya', 'went'].includes(s)) return 'ATTENDED';
+	if (s === 'owner') return 'OWNER';
+	if (s === 'manager') return 'MANAGER';
+	if (s.startsWith('promoter')) return 'PROMOTER';
+	if (s.startsWith('agent')) return 'AGENT';
+	if (['quicket', 'mticket', 'ticketing'].includes(s)) return 'TICKETING';
+	if (s === 'social media') return 'SOCIAL_MEDIA';
+	if (['flyer', 'poster'].includes(s)) return 'FLYER';
+	if (s === 'press') return 'PRESS';
+	if (s.startsWith('audience')) return 'AUDIENCE';
+	throw new Error(`Occurrence ${id}: unknown source "${v}"`);
+}
+
 const zones = load('0_zone.csv').map((z) => ({
 	name: z.name,
 	division: z.division,
@@ -120,7 +140,7 @@ const occurrences = load('3_occurrence.csv').map((o) => ({
 	lineup: trimList(o.lineup),
 	register: o.register,
 	claimType: o.claimType,
-	source: o.source,
+	source: source(o.source, o.id),
 	status: o.status ?? 'LEAD',
 	confirmedOn: o.confirmedOn,
 	confirmedBy: o.confirmedBy
@@ -147,6 +167,7 @@ const casts = {
 	register: '"Register"',
 	category: '"Category"',
 	claimType: '"ClaimType"',
+	source: '"Source"',
 	status: '"OccurrenceStatus"',
 	date: 'date',
 	runningSince: 'timestamp',
