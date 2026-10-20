@@ -1,6 +1,8 @@
 // Parsing register forms: plain-language errors, and the database's guards
 // translated for the person filling the form in.
 
+import { droppedConnection } from './db.js';
+
 export class Invalid extends Error {}
 
 const TIME = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
@@ -55,6 +57,7 @@ const CONSTRAINTS: Record<string, string> = {
 /** An Invalid or a known database guard → a form failure message; anything else rethrows. */
 export function failureMessage(e: unknown) {
 	if (e instanceof Invalid) return e.message;
+	if (droppedConnection(e)) return 'Lost the connection to the database mid-save. Reload to see what was kept, then try again.';
 	const msg = String((e as Error)?.message ?? e);
 	const known = Object.keys(CONSTRAINTS).find((c) => msg.includes(c));
 	if (known) return CONSTRAINTS[known];

@@ -7,7 +7,7 @@
 import { PerkKind } from './prisma.js';
 import { Invalid, oneOf } from './forms.js';
 import { asDate } from './register.js';
-import type { Prisma } from '../../generated/prisma/client';
+import type { Tx } from './db.js';
 
 type Parent = { residencyId: string } | { occurrenceId: string };
 
@@ -33,7 +33,7 @@ export function parsePerks(f: FormData) {
 		});
 }
 
-export async function savePerks(tx: Prisma.TransactionClient, parent: Parent, f: FormData) {
+export async function savePerks(tx: Tx, parent: Parent, f: FormData) {
 	const perks = parsePerks(f);
 	if (perks === null) return;
 	const keep = perks.map((p) => p.id).filter((id): id is string => !!id);
@@ -55,7 +55,7 @@ export async function savePerks(tx: Prisma.TransactionClient, parent: Parent, f:
  * the night (same kind, label and condition) isn't added twice. Returns how
  * many rows were created.
  */
-export async function addPerks(tx: Prisma.TransactionClient, parent: Parent, f: FormData) {
+export async function addPerks(tx: Tx, parent: Parent, f: FormData) {
 	const perks = parsePerks(f);
 	if (!perks?.length) return 0;
 	const existing = await tx.perk.findMany({ where: parent, select: { kind: true, label: true, condition: true, sortOrder: true } });
