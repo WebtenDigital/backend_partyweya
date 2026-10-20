@@ -11,15 +11,18 @@ type Use = { name: string; night: string; venue: string; event: string };
 export const load: PageServerLoad = async ({ url }) => {
 	const [acts, uses, lineups] = await Promise.all([
 		prisma.act.findMany({ orderBy: { name: 'asc' } }),
-		// Every billed name with the night it's on: live standing nights and dated rows that aren't cancelled.
+		// Every name ever billed, with the night it's on — stopped and cancelled nights
+		// included (labelled), so stopping a night never makes its act vanish.
 		prisma.$queryRaw<Use[]>`
-			SELECT btrim(n) AS name, 'r:' || r."id" AS night, v."name" AS venue, r."eventName" AS event
+			SELECT btrim(n) AS name, 'r:' || r."id" AS night, v."name" AS venue,
+			       r."eventName" || CASE WHEN r."active" THEN '' ELSE ' (stopped)' END AS event
 			FROM "Residency" r JOIN "Venue" v ON v."id" = r."venueId", unnest(r."lineup") n
-			WHERE r."active" AND btrim(n) <> ''
+			WHERE btrim(n) <> ''
 			UNION ALL
-			SELECT btrim(n), 'o:' || o."id", v."name", o."eventName"
+			SELECT btrim(n), 'o:' || o."id", v."name",
+			       o."eventName" || CASE WHEN o."status" = 'CANCELLED' THEN ' (cancelled)' ELSE '' END
 			FROM "Occurrence" o JOIN "Venue" v ON v."id" = o."venueId", unnest(o."lineup") n
-			WHERE o."status" <> 'CANCELLED' AND btrim(n) <> ''`,
+			WHERE btrim(n) <> ''`,
 		prisma.$queryRaw<{ lineup: string[] }[]>`
 			SELECT DISTINCT "lineup" FROM (SELECT "lineup" FROM "Residency" UNION ALL SELECT "lineup" FROM "Occurrence") x
 			WHERE cardinality("lineup") > 1`

@@ -14,13 +14,13 @@ export const load: PageServerLoad = async ({ params }) => {
 	const [organisers, residencies, occurrences, names, acts] = await Promise.all([
 		prisma.organiser.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }),
 		prisma.$queryRaw<{ id: string; event: string; venue: string; day: number; lineup: string[] }[]>`
-			SELECT r."id", r."eventName" AS event, v."name" AS venue, r."dayOfWeek" AS day, r."lineup"
+			SELECT r."id", r."eventName" || CASE WHEN r."active" THEN '' ELSE ' (stopped)' END AS event, v."name" AS venue, r."dayOfWeek" AS day, r."lineup"
 			FROM "Residency" r JOIN "Venue" v ON v."id" = r."venueId"
-			WHERE r."active" AND EXISTS (SELECT 1 FROM unnest(r."lineup") n WHERE lower(btrim(n)) = ANY (${answersTo}::text[]))`,
+			WHERE EXISTS (SELECT 1 FROM unnest(r."lineup") n WHERE lower(btrim(n)) = ANY (${answersTo}::text[]))`,
 		prisma.$queryRaw<{ id: string; event: string; venue: string; date: Date; lineup: string[] }[]>`
-			SELECT o."id", o."eventName" AS event, v."name" AS venue, o."date", o."lineup"
+			SELECT o."id", o."eventName" || CASE WHEN o."status" = 'CANCELLED' THEN ' (cancelled)' ELSE '' END AS event, v."name" AS venue, o."date", o."lineup"
 			FROM "Occurrence" o JOIN "Venue" v ON v."id" = o."venueId"
-			WHERE o."status" <> 'CANCELLED' AND EXISTS (SELECT 1 FROM unnest(o."lineup") n WHERE lower(btrim(n)) = ANY (${answersTo}::text[]))
+			WHERE EXISTS (SELECT 1 FROM unnest(o."lineup") n WHERE lower(btrim(n)) = ANY (${answersTo}::text[]))
 			ORDER BY o."date" DESC`,
 		billedNames(),
 		loadActs()

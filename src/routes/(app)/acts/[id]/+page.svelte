@@ -123,7 +123,7 @@
 		<aside class="space-y-4">
 			<section class="panel">
 				<h3 class="panel-title mb-3">Billed on</h3>
-				{#if !data.nights.length}<p class="text-xs text-dim">No live night bills them right now.</p>{/if}
+				{#if !data.nights.length}<p class="text-xs text-dim">No night bills them yet.</p>{/if}
 				<ul class="space-y-2">
 					{#each data.nights as n (n.href)}
 						<li>
