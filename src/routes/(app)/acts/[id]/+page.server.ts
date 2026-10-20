@@ -14,7 +14,7 @@ export const load: PageServerLoad = async ({ params }) => {
 	const [organisers, residencies, occurrences, names, acts] = await Promise.all([
 		prisma.organiser.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }),
 		prisma.$queryRaw<{ id: string; event: string; venue: string; day: number; lineup: string[] }[]>`
-			SELECT r."id", r."eventName" || CASE WHEN r."active" THEN '' ELSE ' (stopped)' END AS event, v."name" AS venue, r."dayOfWeek" AS day, r."lineup"
+			SELECT r."id", r."eventName" || CASE WHEN r."active" THEN '' ELSE ' (stopped — ' || coalesce(r."stoppedReason", 'no reason recorded') || ')' END AS event, v."name" AS venue, r."dayOfWeek" AS day, r."lineup"
 			FROM "Residency" r JOIN "Venue" v ON v."id" = r."venueId"
 			WHERE EXISTS (SELECT 1 FROM unnest(r."lineup") n WHERE lower(btrim(n)) = ANY (${answersTo}::text[]))`,
 		prisma.$queryRaw<{ id: string; event: string; venue: string; date: Date; lineup: string[] }[]>`

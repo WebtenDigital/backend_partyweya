@@ -45,6 +45,8 @@ export const load: PageServerLoad = async ({ params }) => {
 			lineup: r.lineup,
 			runningSince: kampalaDate(r.runningSince)?.slice(0, 7) ?? null,
 			active: r.active,
+			stoppedReason: r.stoppedReason,
+			stoppedAt: kampalaDate(r.stoppedAt),
 			notes: r.notes,
 			lastConfirmed: kampalaDate(r.lastConfirmed),
 			updatedAt: r.updatedAt.toISOString()
@@ -67,6 +69,9 @@ export const actions: Actions = {
 		const f = await request.formData();
 		const intent = text(f, 'intent'); // 'deactivate' | 'reactivate' | null
 		try {
+			// Stopping a night says why, so whoever looks it up later isn't left guessing.
+			const stoppedReason = text(f, 'stoppedReason');
+			if (intent === 'deactivate' && !stoppedReason) throw new Invalid('Say why it stopped — “ended”, “on break until December”, “never existed”.');
 			const eventName = text(f, 'eventName');
 			if (!eventName) throw new Invalid('The night needs its name.');
 			const category = oneOf(Category, text(f, 'category'), 'category');
@@ -95,8 +100,8 @@ export const actions: Actions = {
 						...(lineup !== undefined && { lineup }),
 						runningSince: running ? asDate(`${running}-01`) : null,
 						notes: text(f, 'notes'),
-						...(intent === 'deactivate' && { active: false }),
-						...(intent === 'reactivate' && { active: true })
+						...(intent === 'deactivate' && { active: false, stoppedReason, stoppedAt: new Date() }),
+						...(intent === 'reactivate' && { active: true, stoppedReason: null, stoppedAt: null })
 					}
 				});
 				if (count === 0) throw new Invalid('This standing night changed since you loaded the page — reload to see the latest.');

@@ -70,7 +70,7 @@
 				<ul class="divide-y divide-line">
 					{#each data.residencies as r (r.id)}
 						<li><a href="/residencies/{r.id}" class="flex h-11 items-center justify-between text-sm hover:text-chill">
-							<span>{r.eventName}{r.active ? '' : ' (stopped)'}</span>
+							<span>{r.eventName}{#if !r.active} <span class="text-energy/80">(stopped — {r.stoppedReason ?? 'no reason recorded'})</span>{/if}</span>
 							<span class="font-mono text-xs text-dim">{DAYS[r.dayOfWeek]} · {r.startTime ?? 'no time'}</span>
 						</a></li>
 					{/each}

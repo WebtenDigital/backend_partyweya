@@ -10,7 +10,7 @@ export const load: PageServerLoad = async ({ params }) => {
 		where: { id: params.id },
 		include: {
 			zone: true,
-			residencies: { orderBy: { dayOfWeek: 'asc' }, select: { id: true, eventName: true, dayOfWeek: true, startTime: true, active: true } },
+			residencies: { orderBy: { dayOfWeek: 'asc' }, select: { id: true, eventName: true, dayOfWeek: true, startTime: true, active: true, stoppedReason: true } },
 			occurrences: {
 				where: { date: { gte: asDate(kampalaToday()) } },
 				orderBy: { date: 'asc' },

@@ -64,6 +64,7 @@
 	let lineupEl = $state<LineupInput>();
 
 	let saving = $state(false);
+	let stopping = $state(false);
 	let formEl: HTMLFormElement;
 	function onKey(e: KeyboardEvent) {
 		if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
@@ -107,7 +108,7 @@
 				<h1 class="mt-1 text-2xl font-semibold tracking-tight">{fields.eventName || r.eventName}</h1>
 				<p class="font-mono text-xs text-dim">
 					Every {DAYS[Number(fields.day)]} · {fields.start || 'no time'} · {[r.zone ?? 'NO ZONE', r.division].filter(Boolean).join(' · ')}
-					{#if !r.active}<span class="ml-2 rounded border border-energy/50 px-1.5 text-energy">STOPPED — on no week</span>{/if}
+					{#if !r.active}<span class="ml-2 rounded border border-energy/50 px-1.5 text-energy">STOPPED{r.stoppedAt ? ` ${shortDate(r.stoppedAt)}` : ''} — {r.stoppedReason ?? 'no reason recorded'}</span>{/if}
 				</p>
 			</div>
 		</div>
@@ -115,13 +116,25 @@
 			{#if form?.error}<p class="max-w-xs text-sm text-energy">{form.error}</p>{/if}
 			{#if form?.saved && !saving}<p class="text-sm text-vetted">Saved ✓</p>{/if}
 			{#if r.active}
-				<button name="intent" value="deactivate" class="btn h-11" title="Takes it off every week; the record stays">Deactivate</button>
+				<button type="button" class="btn h-11" onclick={() => (stopping = !stopping)} aria-expanded={stopping}>Deactivate</button>
 			{:else}
 				<button name="intent" value="reactivate" class="btn h-11">Reactivate</button>
 			{/if}
 			<button class="btn-primary h-11" disabled={saving}>{saving ? 'Saving…' : 'Save the rule'}</button>
 		</div>
 	</header>
+
+	{#if stopping && r.active}
+		<div class="mx-4 mt-4 flex flex-wrap items-end gap-3 rounded-md border border-energy/40 bg-energy/5 px-4 py-3 sm:mx-6">
+			<label class="field min-w-64 flex-1">
+				<span>Why is it stopping? Shown beside it wherever it’s looked up.</span>
+				<!-- svelte-ignore a11y_autofocus -->
+				<input name="stoppedReason" class="input h-11" placeholder="Ended · On break until December · Never existed" autofocus />
+			</label>
+			<button name="intent" value="deactivate" class="btn h-11 border-energy/60 text-energy">Stop it — off every week</button>
+			<button type="button" class="btn h-11" onclick={() => (stopping = false)}>Keep it running</button>
+		</div>
+	{/if}
 
 	<div class="grid gap-6 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_320px]">
 		<main class="min-w-0 space-y-4">

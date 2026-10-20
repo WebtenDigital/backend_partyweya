@@ -261,9 +261,11 @@ model Residency {
   //                      to 14 HIGH_ENERGY / 6 SOCIAL / 0 CHILL by being copied
   //                      from the category. Making it required forces the call.
 
-  recurrence   Recurrence @default(WEEKLY)
-  runningSince DateTime? //  the durability signal: a year beats a month
-  active       Boolean    @default(true)
+  recurrence    Recurrence @default(WEEKLY)
+  runningSince  DateTime? //  the durability signal: a year beats a month
+  active        Boolean    @default(true)
+  stoppedReason String? //   why it was deactivated — asked for on Deactivate
+  stoppedAt     DateTime? // when
 
   lastConfirmed DateTime? // drives the monthly sweep
   claimType     ClaimType? // what PartyWeya may say about the standing night

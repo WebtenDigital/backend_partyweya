@@ -15,7 +15,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		// included (labelled), so stopping a night never makes its act vanish.
 		prisma.$queryRaw<Use[]>`
 			SELECT btrim(n) AS name, 'r:' || r."id" AS night, v."name" AS venue,
-			       r."eventName" || CASE WHEN r."active" THEN '' ELSE ' (stopped)' END AS event
+			       r."eventName" || CASE WHEN r."active" THEN '' ELSE ' (stopped — ' || coalesce(r."stoppedReason", 'no reason recorded') || ')' END AS event
 			FROM "Residency" r JOIN "Venue" v ON v."id" = r."venueId", unnest(r."lineup") n
 			WHERE btrim(n) <> ''
 			UNION ALL
