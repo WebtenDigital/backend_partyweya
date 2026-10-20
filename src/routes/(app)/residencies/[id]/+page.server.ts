@@ -5,6 +5,7 @@ import { savePerks } from '#lib/server/perks.js';
 import { billingKey, billings, lineupFrom, lineupSuggestions, unclassified } from '#lib/server/acts.js';
 import { asDate, kampalaDate } from '#lib/server/register.js';
 import { kampalaToday } from '#lib/build/week.js';
+import { reminders } from '#lib/server/reminders.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -29,6 +30,7 @@ export const load: PageServerLoad = async ({ params }) => {
 		suggestions,
 		billing,
 		today: kampalaToday(),
+		reminders: await reminders({ residency: r.id }),
 		residency: {
 			id: r.id,
 			venue: { id: r.venue.id, name: r.venue.name, phone: r.venue.phone, whatsapp: r.venue.whatsapp },

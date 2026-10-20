@@ -47,7 +47,9 @@ const CONSTRAINTS: Record<string, string> = {
 	Venue_name_key: 'A venue with that name is already in the register.',
 	transferred_needs_transferring_act:
 		'TRANSFERRED needs someone in the lineup whose own act record says they transfer. Set that on the act first, or claim FACTUAL.',
-	act_transfers_needs_note: 'Saying an act transfers needs a note on why.'
+	act_transfers_needs_note: 'Saying an act transfers needs a note on why.',
+	reminder_one_subject: 'A reminder hangs off one record — a venue, an act, an organiser or a night. Pick which.',
+	reminder_needs_body: 'Say what the reminder is for.'
 };
 
 /** An Invalid or a known database guard → a form failure message; anything else rethrows. */

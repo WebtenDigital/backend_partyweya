@@ -195,6 +195,7 @@ model Venue {
 
   residencies Residency[]
   occurrences Occurrence[]
+  reminders   Reminder[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -226,6 +227,7 @@ model Organiser {
   residencies Residency[]
   occurrences Occurrence[]
   acts        Act[] // acts they represent
+  reminders   Reminder[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -275,6 +277,7 @@ model Residency {
 
   occurrences Occurrence[]
   perks       Perk[]
+  reminders   Reminder[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -328,6 +331,7 @@ model Occurrence {
 
   publications Publication[]
   perks        Perk[]
+  reminders    Reminder[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -412,8 +416,44 @@ model Act {
   phoneVerifiedAt DateTime? // set on a call that reaches them; cleared when the number changes
   lastContacted   DateTime?
   paidClient      Boolean   @default(false)
+  reminders       Reminder[]
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @default(now()) @updatedAt
 
   @@index([aliases], type: Gin)
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  REMINDER — something you asked yourself to do, hung off exactly one
+//  record (a CHECK in SQL, not a convention): a reminder with no subject
+//  is not register work. Cleared by doneAt, never deleted — the written /
+//  cleared ratio is the evidence of whether writing them works. When
+//  dueOn is null the due date is inherited from the night it hangs off,
+//  computed in the query so it moves when the night does. Internal only.
+// ─────────────────────────────────────────────────────────────────────
+
+model Reminder {
+  id           String      @id @default(cuid())
+  body         String //    "Get the flyer from The Clan Band"
+  venue        Venue?      @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  venueId      String?
+  act          Act?        @relation(fields: [actId], references: [id], onDelete: Cascade)
+  actId        String?
+  organiser    Organiser?  @relation(fields: [organiserId], references: [id], onDelete: Cascade)
+  organiserId  String?
+  residency    Residency?  @relation(fields: [residencyId], references: [id], onDelete: Cascade)
+  residencyId  String?
+  occurrence   Occurrence? @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
+  occurrenceId String?
+  dueOn        DateTime?   @db.Date // null = inherit from the occurrence / residency
+  doneAt       DateTime? //  a timestamp, never a delete
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @default(now()) @updatedAt
+
+  @@index([doneAt, dueOn])
+  @@index([venueId])
+  @@index([actId])
+  @@index([organiserId])
+  @@index([residencyId])
+  @@index([occurrenceId])
 }

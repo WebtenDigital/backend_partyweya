@@ -81,6 +81,7 @@ export type RowState = 'publishable' | 'needs-time' | 'lead' | 'changed';
 
 export interface Row {
 	key: string;
+	residencyId?: string; // the standing night behind a STANDING or OVERRIDE row
 	date: string;
 	kind: 'STANDING' | 'OVERRIDE' | 'ONE-OFF';
 	eventName: string;
@@ -164,6 +165,7 @@ export function buildWeek(
 			const priceGate = o.priceGate ?? r.priceGate;
 			rows.push({
 				key: o.id,
+				residencyId: r.id,
 				date,
 				kind: 'OVERRIDE',
 				eventName: o.eventName,
@@ -192,6 +194,7 @@ export function buildWeek(
 			r.lastConfirmed != null && daysBetween(r.lastConfirmed, weekStart) <= SWEEP_DAYS;
 		rows.push({
 			key: `${r.id}|${date}`,
+			residencyId: r.id,
 			date,
 			kind: 'STANDING',
 			eventName: r.eventName,

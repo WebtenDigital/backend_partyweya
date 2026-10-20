@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
+	import Reminders from '#lib/components/Reminders.svelte';
 	import { ROLES } from '#lib/build/acts.js';
 	import { shortDate } from '#lib/build/week.js';
 	import type { PageProps } from './$types';
@@ -121,6 +122,10 @@
 		</main>
 
 		<aside class="space-y-4">
+			<section id="reminders" class="panel scroll-mt-4 {data.reminders.some((x) => x.due && x.due < data.today) ? 'border-energy/50' : ''}">
+				<h3 class="panel-title mb-2">You asked yourself to</h3>
+				<Reminders items={data.reminders} today={data.today} subject={{ kind: 'act', id: data.act.id, label: data.act.name }} />
+			</section>
 			<section class="panel">
 				<h3 class="panel-title mb-3">Billed on</h3>
 				{#if !data.nights.length}<p class="text-xs text-dim">No night bills them yet.</p>{/if}

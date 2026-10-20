@@ -5,6 +5,7 @@ import { savePerks } from '#lib/server/perks.js';
 import { lineupFrom, lineupSuggestions, unclassified } from '#lib/server/acts.js';
 import { isoDate, kampalaDate } from '#lib/server/register.js';
 import { kampalaToday } from '#lib/build/week.js';
+import { reminders } from '#lib/server/reminders.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -20,6 +21,7 @@ export const load: PageServerLoad = async ({ params }) => {
 	return {
 		suggestions: await lineupSuggestions(),
 		today: kampalaToday(),
+		reminders: await reminders({ occurrence: o.id }),
 		occurrence: {
 			id: o.id,
 			date: isoDate(o.date),

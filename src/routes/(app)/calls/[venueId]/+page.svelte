@@ -3,6 +3,7 @@
 	import { enhance } from '$app/forms';
 	import PerksEditor from '#lib/components/PerksEditor.svelte';
 	import LineupInput from '#lib/components/LineupInput.svelte';
+	import Reminders from '#lib/components/Reminders.svelte';
 	import { CADENCE, Q6 } from '#lib/build/calls.js';
 	import { shortDate } from '#lib/build/week.js';
 	import type { PageProps } from './$types';
@@ -274,6 +275,18 @@
 		</main>
 
 		<aside class="space-y-4">
+			<section class="panel {data.reminders.some((r) => r.due && r.due < data.today) ? 'border-energy/50' : ''}">
+				<div class="mb-2 flex items-center justify-between">
+					<h3 class="panel-title">You asked yourself to</h3>
+					<span class="font-mono text-xs text-dim">{data.reminders.length || ''}</span>
+				</div>
+				<Reminders
+					items={data.reminders}
+					today={data.today}
+					subject={{ kind: 'venue', id: data.venue.id, label: data.venue.name }}
+					showSubject={data.reminders.some((r) => r.subject.kind !== 'venue')}
+				/>
+			</section>
 			<section class="panel">
 				<h3 class="panel-title mb-3">On file</h3>
 				<dl class="space-y-1.5 font-mono text-xs">

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
+	import Reminders from '#lib/components/Reminders.svelte';
 	import PerksEditor, { toRows, type PerkRow } from '#lib/components/PerksEditor.svelte';
 	import LineupInput from '#lib/components/LineupInput.svelte';
 	import NewActsPrompt from '#lib/components/NewActsPrompt.svelte';
@@ -237,6 +238,10 @@
 		</main>
 
 		<aside class="space-y-4">
+			<section id="reminders" class="panel scroll-mt-4 {data.reminders.some((x) => x.due && x.due < data.today) ? 'border-energy/50' : ''}">
+				<h3 class="panel-title mb-2">You asked yourself to</h3>
+				<Reminders items={data.reminders} today={data.today} subject={{ kind: 'residency', id: data.residency.id, label: `${data.residency.eventName} · ${data.residency.venue.name}` }} />
+			</section>
 			<section class="panel">
 				<h3 class="panel-title mb-3">How a week shows it</h3>
 				<div class="rounded-md border border-l-4 border-line bg-ink/40 p-3 {REGISTER_EDGE[fields.register]} {r.active ? '' : 'opacity-50'}">

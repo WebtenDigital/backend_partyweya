@@ -12,6 +12,7 @@
 		type Row
 	} from '#lib/build/week.js';
 	import { page } from '$app/state';
+	import { reminderAction } from '#lib/reminders.js';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -217,6 +218,14 @@
 											{r.perks.length ? 'edit offers' : '+ offer'}
 										</a>
 									</div>
+									{#each data.reminders.filter((m) => (r.residencyId && m.residencyId === r.residencyId) || (r.kind !== 'STANDING' && m.occurrenceId === r.key)) as m (m.id)}
+										{@const late = !!m.due && m.due < data.today}
+										<p class="mt-1 flex items-center gap-2 text-xs">
+											<button type="button" onclick={() => reminderAction('done', { id: m.id })} class="size-4 shrink-0 rounded border border-dim hover:border-vetted hover:bg-vetted/20" aria-label="Mark done: {m.body}" title="Done"></button>
+											<span class={late ? 'text-energy' : 'text-fg/80'}>{m.body}</span>
+											{#if m.due}<span class="font-mono text-[10px] {late ? 'text-energy' : 'text-dim'}">{late ? 'overdue · ' : ''}{shortDate(m.due)}</span>{/if}
+										</p>
+									{/each}
 								</div>
 
 								<div class="font-mono">

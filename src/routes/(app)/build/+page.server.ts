@@ -3,6 +3,7 @@ import { prisma } from '#lib/server/prisma.js';
 import { isWeek, kampalaDate, loadWeek } from '#lib/server/register.js';
 import { SWEEP_DAYS, addDays, daysBetween, kampalaToday, nextMonday, shortDate } from '#lib/build/week.js';
 import { unclassified } from '#lib/server/acts.js';
+import { reminders } from '#lib/server/reminders.js';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url }) => {
@@ -50,7 +51,16 @@ export const load: PageServerLoad = async ({ url }) => {
 
 	const [venueCount, standingVenues, standingNights, chillNights, tested] = stats;
 	const newActs = await unclassified((url.searchParams.get('newacts') ?? '').split('|').filter(Boolean));
+	// Open reminders on the week's nights, shown on their rows.
+	const nightReminders = await reminders({
+		ids: {
+			residencies: [...new Set(rows.map((r) => r.residencyId).filter((x): x is string => !!x))],
+			occurrences: rows.filter((r) => r.kind !== 'STANDING').map((r) => r.key)
+		}
+	});
+
 	return {
+		reminders: nightReminders,
 		newActs,
 		week,
 		weekEnd,

@@ -14,6 +14,7 @@ import { savePerks } from '#lib/server/perks.js';
 import { lineupFrom, lineupSuggestions, newActsParam, unclassified } from '#lib/server/acts.js';
 import { Invalid, failureMessage, money, oneOf, phone, slug, text, time } from '#lib/server/forms.js';
 import { kampalaToday, nextMonday } from '#lib/build/week.js';
+import { reminders } from '#lib/server/reminders.js';
 import type { Actions, PageServerLoad } from './$types';
 
 const editablePerk = (p: { id: string; kind: string; label: string; condition: string | null; activeUntil: Date | null }) => ({
@@ -103,7 +104,9 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		// Where the queue sent this call.
 		mode: occurrenceId ? 'dated' : residencyId ? 'standing' : 'none',
 		residencyId: residencyId ?? venue.residencies.find((r) => !r.startTime)?.id ?? venue.residencies[0]?.id ?? null,
-		occurrenceId: occurrenceId ?? 'new'
+		occurrenceId: occurrenceId ?? 'new',
+		// Open reminders for this venue and its nights — in the sidebar while you're on the phone.
+		reminders: await reminders({ venue: venue.id }, today)
 	};
 };
 

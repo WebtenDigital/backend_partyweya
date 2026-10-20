@@ -4,6 +4,7 @@ import { asDate, isWeek, isoDate, kampalaDate, loadWeek } from '#lib/server/regi
 import { addDays, kampalaToday, nextMonday } from '#lib/build/week.js';
 import { callQueue } from '#lib/build/calls.js';
 import { unclassified } from '#lib/server/acts.js';
+import { reminderHealth, reminders, subjects } from '#lib/server/reminders.js';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url }) => {
@@ -65,5 +66,10 @@ export const load: PageServerLoad = async ({ url }) => {
 	);
 
 	const newActs = await unclassified((url.searchParams.get('newacts') ?? '').split('|').filter(Boolean));
-	return { newActs, week, today, queue, gate, register: { venues: venueCount, numbers } };
+
+	// The sixth group: written by hand, not derived. Open only, by effective due date.
+	const [open, subjectList] = await Promise.all([reminders({}, today), subjects()]);
+	const health = await reminderHealth(open, today);
+
+	return { newActs, week, today, queue, gate, register: { venues: venueCount, numbers }, reminders: open, health, subjects: subjectList };
 };

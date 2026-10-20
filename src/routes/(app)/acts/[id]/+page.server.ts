@@ -4,6 +4,8 @@ import { Invalid, failureMessage, oneOf, phone, text } from '#lib/server/forms.j
 import { billedNames, loadActs } from '#lib/server/acts.js';
 import { asDate, isoDate, kampalaDate } from '#lib/server/register.js';
 import { nearMatch, resolveAct } from '#lib/build/acts.js';
+import { reminders } from '#lib/server/reminders.js';
+import { kampalaToday } from '#lib/build/week.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -31,6 +33,8 @@ export const load: PageServerLoad = async ({ params }) => {
 	const close = loose.filter((n) => nearMatch(n, [act.name, ...act.aliases]));
 
 	return {
+		today: kampalaToday(),
+		reminders: await reminders({ act: act.id }),
 		act: {
 			id: act.id,
 			name: act.name,

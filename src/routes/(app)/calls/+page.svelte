@@ -1,6 +1,7 @@
 <script lang="ts">
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
 	import NewActsPrompt from '#lib/components/NewActsPrompt.svelte';
+	import Reminders from '#lib/components/Reminders.svelte';
 	import { enhance } from '$app/forms';
 	import { GROUPS, type GroupKey } from '#lib/build/calls.js';
 	import { addDays, shortDate } from '#lib/build/week.js';
@@ -49,6 +50,12 @@
 				<p class="mt-1 text-sm text-dim">
 					{plural(data.queue.length, 'venue')} on the list. The top two groups are what stops next week publishing.
 				</p>
+				{#if data.health.written}
+					<p class="mt-1 font-mono text-xs">
+						<a href="#reminders" class="text-dim hover:text-fg">{plural(data.health.open, 'reminder')}</a>
+						{#if data.health.overdue}<span class="ml-1 rounded bg-energy/20 px-1.5 py-0.5 font-semibold text-energy">{data.health.overdue} overdue</span>{/if}
+					</p>
+				{/if}
 			</div>
 		</div>
 		<nav class="flex flex-wrap gap-2 text-sm">
@@ -161,6 +168,20 @@
 					</div>
 				</section>
 			{/each}
+
+			<!-- Sixth: written by hand. Always below the derived groups — an overdue flyer is not
+			     more urgent than a row that cannot publish, and the ranking is what makes the queue trustworthy. -->
+			<section id="reminders" class="mb-7 scroll-mt-4">
+				<div class="mb-2 flex items-center gap-3 font-mono text-xs">
+					<h2 class="font-semibold tracking-wider text-dated uppercase">You asked yourself to</h2>
+					<span class="text-dim">written by hand, not derived</span>
+					<span class="h-px flex-1 bg-line"></span>
+					<span class={data.health.overdue ? 'font-semibold text-energy' : 'text-dim'}>
+						{data.reminders.length}{data.health.overdue ? ` · ${data.health.overdue} overdue` : ''}
+					</span>
+				</div>
+				<Reminders items={data.reminders} today={data.today} subjects={data.subjects} />
+			</section>
 		</main>
 
 		<aside class="space-y-4">
@@ -197,6 +218,28 @@
 					{/each}
 				</div>
 			</section>
+
+			{#if data.health.written}
+				{@const h = data.health}
+				<section class="panel">
+					<div class="mb-2 flex items-center justify-between">
+						<h3 class="panel-title">Are reminders working?</h3>
+						<a href="/reminders" class="font-mono text-[10px] text-dim hover:text-fg">done →</a>
+					</div>
+					<dl class="grid grid-cols-4 gap-2 text-center font-mono">
+						<div><dd class="text-lg">{h.written}</dd><dt class="text-[10px] text-dim">written</dt></div>
+						<div><dd class="text-lg text-vetted">{h.cleared}</dd><dt class="text-[10px] text-dim">cleared</dt></div>
+						<div><dd class="text-lg {h.overdue ? 'text-energy' : ''}">{h.overdue}</dd><dt class="text-[10px] text-dim">overdue</dt></div>
+						<div><dd class="text-lg">{h.oldest ? shortDate(h.oldest) : '—'}</dd><dt class="text-[10px] text-dim">oldest open</dt></div>
+					</dl>
+					{#if h.written >= 10 && h.cleared / h.written < 0.5}
+						<p class="mt-3 text-xs text-social">
+							{h.written} written, {h.cleared} cleared. That isn’t a reason to try harder — it’s the register saying writing
+							reminders isn’t working for you. Stopping is a fine answer.
+						</p>
+					{/if}
+				</section>
+			{/if}
 
 			<section class="panel">
 				<h3 class="panel-title mb-2">What a call can do</h3>
