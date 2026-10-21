@@ -4,6 +4,7 @@
 	import Reminders from '#lib/components/Reminders.svelte';
 	import { enhance } from '$app/forms';
 	import { GROUPS, type GroupKey } from '#lib/build/calls.js';
+	import { UNKNOWN_LABEL } from '#lib/build/who.js';
 	import { addDays, shortDate } from '#lib/build/week.js';
 	import type { PageProps } from './$types';
 
@@ -32,7 +33,10 @@
 	const groups = $derived(
 		GROUPS.map((g) => ({ ...g, rows: data.queue.filter((r) => r.group === g.key) })).filter((g) => g.rows.length)
 	);
-	const missingNumbers = $derived(data.queue.filter((r) => !r.venue.phone).length);
+	// By whoever the row dials: a flyer's number is callable even though nobody owns it yet.
+	const missingNumbers = $derived(
+		data.queue.filter((r) => (r.callWho === 'organiser' ? !r.organiser?.phone : r.callWho === 'venue' ? !r.venue.phone : false)).length
+	);
 	const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 </script>
 
@@ -77,7 +81,7 @@
 				<span class="text-energy">
 					{missingNumbers === data.queue.length
 						? 'None of them has a phone number on file.'
-						: `${missingNumbers} have no phone number on file.`}
+						: `${missingNumbers} ${missingNumbers === 1 ? 'has' : 'have'} no phone number on file.`}
 				</span>
 			</p>
 			<p class="mt-1 text-fg/80">
@@ -108,7 +112,7 @@
 					</div>
 					<div class="space-y-2">
 						{#each g.rows as row (row.key)}
-							{@const href = `/calls/${row.venue.id}${row.items[0].href}&week=${data.week}`}
+							{@const href = `${row.items[0].href}&week=${data.week}`}
 							<div
 								class="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 rounded-md border border-l-4 border-line bg-panel px-4 py-3 text-sm hover:border-dim sm:grid-cols-[minmax(0,1fr)_150px_190px_60px] sm:items-center {EDGE[g.key]}"
 							>
@@ -119,6 +123,12 @@
 											<span class="font-mono text-[10px] tracking-wider text-dated">ORGANISER{row.organiser.contactName ? ` · ${row.organiser.name}` : ''}</span>
 										</p>
 										<p class="text-xs text-social">not {row.venue.name} — it’s their night, so they’re the ones who know</p>
+									{:else if row.booking}
+										<p class="font-semibold hover:underline">
+											{row.venue.name}
+											<span class="font-mono text-[10px] tracking-wider text-social">UNKNOWN NUMBER</span>
+										</p>
+										<p class="text-xs text-social">{UNKNOWN_LABEL}{row.booking.note ? ` · ${row.booking.note}` : ''}</p>
 									{:else}
 										<p class="font-semibold hover:underline">{row.venue.name}</p>
 									{/if}
@@ -133,6 +143,8 @@
 									<span class="col-span-2 font-mono text-xs sm:col-span-1 {row.organiser.phone ? 'text-fg' : 'text-social'}">
 										{row.organiser.phone ?? 'no number'}{row.organiser.whatsapp ? ' · WhatsApp' : ''}
 									</span>
+								{:else if row.booking}
+									<span class="col-span-2 font-mono text-xs text-fg sm:col-span-1">{row.booking.phone}</span>
 								{:else}
 								<!-- A number found by desk research saves here; it is not a call. -->
 								<form

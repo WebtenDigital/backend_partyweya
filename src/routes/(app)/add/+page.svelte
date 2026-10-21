@@ -6,6 +6,7 @@
 	import { dayHeading, shillings } from '#lib/build/week.js';
 	import PerksEditor, { type PerkRow } from '#lib/components/PerksEditor.svelte';
 	import LineupInput from '#lib/components/LineupInput.svelte';
+	import OrganiserPicker from '#lib/components/OrganiserPicker.svelte';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -345,6 +346,14 @@
 							<input name="advance" class="input" inputmode="numeric" placeholder="—" bind:value={advance} disabled={weekly} title={weekly ? 'Standing nights carry one gate price' : ''} />
 						</label>
 					</div>
+					<div class="grid gap-3 sm:grid-cols-[200px_minmax(0,1fr)]">
+						<label class="field"><span>Number on the flyer <span class="text-dim/70">— internal</span></span>
+							<input name="bookingPhone" type="tel" class="input font-mono" placeholder="—" />
+						</label>
+						<label class="field"><span>What it’s for — we don’t know whose it is yet</span>
+							<input name="bookingPhoneNote" class="input" placeholder="for reservations · VIP tables · advance only" />
+						</label>
+					</div>
 					<label class="field"><span>Register</span>
 						<select name="register" class="input" bind:value={register}>
 							<option value="">—</option>
@@ -410,6 +419,12 @@
 					</label>
 				{:else if prov}
 					<input type="hidden" name="source" value={source} />
+				{/if}
+				{#if source === 'PROMOTER' || source === 'AGENT'}
+					<div class="field">
+						<span>Who? <span class="text-dim/70">— optional. Link them only if it’s their night; a promoter sometimes passes on someone else’s.</span></span>
+						<OrganiserPicker name="who" organisers={data.organisers} />
+					</div>
 				{/if}
 			</section>
 		</main>

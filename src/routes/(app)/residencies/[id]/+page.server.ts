@@ -1,6 +1,8 @@
 import { error, fail } from '@sveltejs/kit';
 import { prisma, Category, Register } from '#lib/server/prisma.js';
-import { Invalid, failureMessage, money, oneOf, text, time } from '#lib/server/forms.js';
+import { Invalid, failureMessage, money, oneOf, phone, text, time } from '#lib/server/forms.js';
+import { organiserFrom, organiserOptions } from '#lib/server/organisers.js';
+import { callPanel, whoToCall } from '#lib/build/who.js';
 import { savePerks } from '#lib/server/perks.js';
 import { billingKey, billings, lineupFrom, lineupSuggestions, unclassified } from '#lib/server/acts.js';
 import { asDate, kampalaDate } from '#lib/server/register.js';
@@ -9,12 +11,12 @@ import { reminders } from '#lib/server/reminders.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params }) => {
-	const [r, standing, chill, noted, suggestions] = await Promise.all([
+	const [r, standing, chill, noted, suggestions, organisers] = await Promise.all([
 		prisma.residency.findUnique({
 			where: { id: params.id },
 			include: {
 				venue: { select: { id: true, name: true, phone: true, whatsapp: true, zone: { select: { name: true, division: true } } } },
-				organiser: { select: { id: true, name: true, contactName: true, phone: true, whatsapp: true } },
+				organiser: { select: { id: true, name: true, contactName: true, role: true, phone: true, whatsapp: true } },
 				perks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }
 			}
 		}),
@@ -22,13 +24,17 @@ export const load: PageServerLoad = async ({ params }) => {
 		prisma.residency.count({ where: { active: true, register: 'CHILL' } }),
 		// Standing nights whose act may still be sitting in an internal note.
 		prisma.residency.count({ where: { active: true, id: { not: params.id }, lineup: { isEmpty: true }, notes: { not: null } } }),
-		lineupSuggestions()
+		lineupSuggestions(),
+		organiserOptions()
 	]);
 	if (!r) error(404, 'No such standing night');
 	const billing = r.lineup.length ? ((await billings([r.lineup])).get(billingKey(r.lineup)) ?? null) : null;
+	const venue = { id: r.venue.id, name: r.venue.name, phone: r.venue.phone, whatsapp: r.venue.whatsapp };
 	return {
 		suggestions,
 		billing,
+		organisers,
+		call: callPanel(whoToCall(null, r), venue, r.organiser, r.id),
 		today: kampalaToday(),
 		reminders: await reminders({ residency: r.id }),
 		residency: {
@@ -37,6 +43,9 @@ export const load: PageServerLoad = async ({ params }) => {
 			zone: r.venue.zone?.name ?? null,
 			division: r.venue.zone?.division ?? null,
 			organiser: r.organiser,
+			organiserId: r.organiserId,
+			bookingPhone: r.bookingPhone,
+			bookingPhoneNote: r.bookingPhoneNote,
 			eventName: r.eventName,
 			category: r.category,
 			dayOfWeek: r.dayOfWeek,
@@ -88,7 +97,10 @@ export const actions: Actions = {
 			if (!seen) throw new Invalid('Reload the page and try again.');
 			const lineup = lineupFrom(f);
 
+			const bookingPhone = phone(f, 'bookingPhone');
 			await prisma.$transaction(async (tx) => {
+				// Routing, not a call: who runs the night, and the number its flyer prints.
+				const organiserId = await organiserFrom(tx, f, 'org');
 				const { count } = await tx.residency.updateMany({
 					where: { id: params.id, updatedAt: new Date(seen) },
 					data: {
@@ -102,6 +114,9 @@ export const actions: Actions = {
 						...(lineup !== undefined && { lineup }),
 						runningSince: running ? asDate(`${running}-01`) : null,
 						notes: text(f, 'notes'),
+						...(organiserId !== undefined && { organiserId }),
+						bookingPhone,
+						bookingPhoneNote: bookingPhone ? text(f, 'bookingPhoneNote') : null,
 						...(intent === 'deactivate' && { active: false, stoppedReason, stoppedAt: new Date() }),
 						...(intent === 'reactivate' && { active: true, stoppedReason: null, stoppedAt: null })
 					}

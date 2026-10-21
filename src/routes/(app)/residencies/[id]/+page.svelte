@@ -3,6 +3,7 @@
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
 	import Reminders from '#lib/components/Reminders.svelte';
 	import CallPanel from '#lib/components/CallPanel.svelte';
+	import OrganiserPicker from '#lib/components/OrganiserPicker.svelte';
 	import PerksEditor, { toRows, type PerkRow } from '#lib/components/PerksEditor.svelte';
 	import LineupInput from '#lib/components/LineupInput.svelte';
 	import NewActsPrompt from '#lib/components/NewActsPrompt.svelte';
@@ -229,6 +230,14 @@
 						</p>
 					</div>
 				</div>
+				<div class="field">
+					<span>Organiser — who runs the night, if it isn’t {r.venue.name}. Routing only; a reader never sees it.</span>
+					{#key r.updatedAt}<OrganiserPicker name="org" organisers={data.organisers} value={r.organiserId} />{/key}
+				</div>
+				<div class="grid gap-3 sm:grid-cols-[200px_minmax(0,1fr)]">
+					<label class="field"><span>Number on the flyer</span><input name="bookingPhone" type="tel" class="input h-11 font-mono" value={r.bookingPhone ?? ''} placeholder="—" /></label>
+					<label class="field"><span>What it’s for — and we don’t know whose it is</span><input name="bookingPhoneNote" class="input h-11" value={r.bookingPhoneNote ?? ''} placeholder="for reservations · VIP tables · advance only" /></label>
+				</div>
 				<label class="field"><span>Notes</span><textarea name="notes" rows="3" class="input" placeholder="—" bind:value={fields.notes}></textarea></label>
 			</section>
 		</main>
@@ -261,21 +270,14 @@
 				</p>
 			</section>
 
-			<CallPanel
-				kind={r.organiser ? 'organiser' : 'venue'}
-				id={r.organiser?.id ?? r.venue.id}
-				who={r.organiser ? 'ORGANISER' : 'VENUE'}
-				name={r.organiser ? `${r.organiser.contactName ?? r.organiser.name}${r.organiser.contactName ? ` · ${r.organiser.name}` : ''}` : r.venue.name}
-				phone={r.organiser ? r.organiser.phone : r.venue.phone}
-				whatsapp={r.organiser ? r.organiser.whatsapp : r.venue.whatsapp}
-				href="/calls/{r.venue.id}?ref={r.id}"
-			>
-				{#if r.organiser}
-					{r.organiser.name} runs this night, so they own the fact — not {r.venue.name}. The promoter owns the night; the venue
-					owns the room.
+			<CallPanel {...data.call}>
+				{#if data.call.who === 'ORGANISER'}
+					They run this night, so they own the fact. A manager’s “I think so?” is worse than no answer, because it gets
+					recorded as one.
+				{:else if data.call.who === 'UNKNOWN'}
+					Ring it and find out whose it is — the call screen asks first, before the script.
 				{:else}
-					No organiser on this night, so the venue owns the fact. A manager’s “I think so?” is worse than no answer, because
-					it gets recorded as one.
+					No organiser on this night, so the venue owns the fact. If a promoter runs it, set them under Internal.
 				{/if}
 			</CallPanel>
 

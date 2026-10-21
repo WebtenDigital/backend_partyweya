@@ -3,6 +3,7 @@
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
 	import Reminders from '#lib/components/Reminders.svelte';
 	import CallPanel from '#lib/components/CallPanel.svelte';
+	import OrganiserPicker from '#lib/components/OrganiserPicker.svelte';
 	import PerksEditor from '#lib/components/PerksEditor.svelte';
 	import LineupInput from '#lib/components/LineupInput.svelte';
 	import NewActsPrompt from '#lib/components/NewActsPrompt.svelte';
@@ -99,6 +100,25 @@
 					<PerksEditor perks={data.perks} today={data.today} weekEnd={addDays(mondayOf(o.date), 6)} />
 				{/key}
 			</section>
+
+			<div class="flex items-center gap-3 py-2 font-mono text-[10px] tracking-[0.2em] text-dim uppercase">
+				<span class="h-px flex-1 bg-line"></span>Everything above goes out · everything below stays in<span class="h-px flex-1 bg-line"></span>
+			</div>
+
+			<section class="panel space-y-3">
+				<h2 class="panel-title">Internal</h2>
+				<p class="text-xs text-dim">Never reaches <code class="font-mono">public_events</code>. Who to ring about this date.</p>
+				<div class="field">
+					<span>
+						Organiser for this date{o.residency?.organiser ? ` — empty keeps the standing night’s, ${o.residency.organiser}` : ''}
+					</span>
+					{#key o.updatedAt}<OrganiserPicker name="org" organisers={data.organisers} value={o.organiserId} />{/key}
+				</div>
+				<div class="grid gap-3 sm:grid-cols-[200px_minmax(0,1fr)]">
+					<label class="field"><span>Number on the flyer</span><input name="bookingPhone" type="tel" class="input h-11 font-mono" value={o.bookingPhone ?? ''} placeholder="—" /></label>
+					<label class="field"><span>What it’s for — and we don’t know whose it is</span><input name="bookingPhoneNote" class="input h-11" value={o.bookingPhoneNote ?? ''} placeholder="for reservations · VIP tables · advance only" /></label>
+				</div>
+			</section>
 		</main>
 
 		<aside class="space-y-4">
@@ -115,20 +135,14 @@
 				</p>
 				<p class="mt-3 text-xs text-dim">Editing here doesn’t confirm anything — only a logged call does.</p>
 			</section>
-			<CallPanel
-				kind={o.organiser ? 'organiser' : 'venue'}
-				id={o.organiser?.id ?? o.venue.id}
-				who={o.organiser ? 'ORGANISER' : 'VENUE'}
-				name={o.organiser ? `${o.organiser.contactName ?? o.organiser.name}${o.organiser.contactName ? ` · ${o.organiser.name}` : ''}` : o.venue.name}
-				phone={o.organiser ? o.organiser.phone : o.venue.phone}
-				whatsapp={o.organiser ? o.organiser.whatsapp : o.venue.whatsapp}
-				href="/calls/{o.venue.id}?ref={o.id}"
-			>
-				{#if o.organiser}
-					{o.organiser.name} runs this night, so the call goes to them, not {o.venue.name}. The promoter owns the night; the
-					venue owns the room.
-				{:else if o.status === 'CONFIRMED' && !o.startTime}
-					Confirmed, but no start time — the one field stopping it publishing.
+			<CallPanel {...data.call}>
+				{#if data.call.who === 'ORGANISER'}
+					They run this night, so the call goes to them. The promoter owns the night; the venue owns the room.
+				{:else if data.call.who === 'UNKNOWN'}
+					Ring it and find out whose it is — the call screen asks first, before the script.
+				{/if}
+				{#if o.status === 'CONFIRMED' && !o.startTime}
+					<span class="mt-1 block text-social">Confirmed, but no start time — the one field stopping it publishing.</span>
 				{/if}
 			</CallPanel>
 		</aside>

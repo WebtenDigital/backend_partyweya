@@ -3,6 +3,7 @@
 // there — a venue gets one call that covers all of them.
 
 import { SWEEP_DAYS, daysBetween, shortDate } from './week.js';
+import { callHref, whoToCall, type Who } from './who.js';
 
 export type GroupKey = 'this-week' | 'every-week' | 'sweep' | 'unclassified';
 
@@ -34,6 +35,8 @@ export interface QueueResidency {
 	id: string;
 	venueId: string;
 	organiserId: string | null;
+	bookingPhone: string | null;
+	bookingPhoneNote: string | null;
 	eventName: string;
 	category: string;
 	dayOfWeek: number;
@@ -45,6 +48,9 @@ export interface QueueOccurrence {
 	id: string;
 	venueId: string;
 	organiserId: string | null;
+	residencyId: string | null;
+	bookingPhone: string | null;
+	bookingPhoneNote: string | null;
 	date: string;
 	eventName: string;
 	startTime: string | null;
@@ -55,7 +61,7 @@ export interface QueueOccurrence {
 
 export interface QueueItem {
 	text: string;
-	href: string; // query string for the call screen: ?occurrence= / ?residency=
+	href: string; // the call screen, dialling whoever the rule picked
 }
 
 export interface QueueRow {
@@ -63,8 +69,10 @@ export interface QueueRow {
 	venue: QueueVenue;
 	// Who owns the fact: a promoter's night is asked of the promoter, not the venue —
 	// a manager's “I think so?” would be recorded as confirmation.
-	callWho: 'venue' | 'organiser';
+	callWho: 'venue' | 'organiser' | 'unknown';
 	organiser: QueueOrganiser | null;
+	// A flyer's number nobody has attributed yet: callable, and labelled as such.
+	booking: { phone: string; note: string | null } | null;
 	group: GroupKey;
 	items: QueueItem[];
 	askQ6: boolean;
@@ -98,43 +106,48 @@ export function callQueue(
 	const rows = new Map<string, QueueRow>();
 	const rank: Record<GroupKey, number> = { 'this-week': 0, 'every-week': 1, sweep: 2, unclassified: 3 };
 
-	const add = (venueId: string, group: GroupKey, item: QueueItem, organiserId: string | null = null) => {
+	const byResidency = new Map(residencies.map((r) => [r.id, r]));
+
+	const add = (venueId: string, group: GroupKey, text: string, ref: string, who: Who) => {
 		const venue = byId.get(venueId);
 		if (!venue) return;
-		const organiser = organiserId ? (orgs.get(organiserId) ?? null) : null;
-		const key = organiser ? `${organiser.id}@${venueId}` : venueId;
+		const organiser = who.kind === 'ORGANISER' ? (orgs.get(who.organiserId) ?? null) : null;
+		const booking = who.kind === 'UNKNOWN' ? { phone: who.phone, note: who.note } : null;
+		const key = organiser ? `${organiser.id}@${venueId}` : booking ? `booking:${booking.phone}@${venueId}` : venueId;
 		const row = rows.get(key) ?? {
 			key,
 			venue,
-			callWho: organiser ? ('organiser' as const) : ('venue' as const),
+			callWho: organiser ? ('organiser' as const) : booking ? ('unknown' as const) : ('venue' as const),
 			organiser,
+			booking,
 			group,
 			items: [],
 			// Question 6 is about the room, so it's asked of the venue.
-			askQ6: !organiser && !venue.conversationTest
+			askQ6: !organiser && !booking && !venue.conversationTest
 		};
 		if (rank[group] < rank[row.group]) row.group = group;
-		row.items.push(item);
+		row.items.push({ text, href: callHref(organiser || booking ? who : { kind: 'VENUE' }, venueId, ref) });
 		rows.set(key, row);
 	};
 
 	for (const o of occurrences) {
 		const why = blockers(o);
-		if (why) add(o.venueId, 'this-week', { text: `${o.eventName} · ${why} · ${dayLabel(o.date)}`, href: `?occurrence=${o.id}` }, o.organiserId);
+		if (why) add(o.venueId, 'this-week', `${o.eventName} · ${why} · ${dayLabel(o.date)}`, o.id, whoToCall(o, o.residencyId ? byResidency.get(o.residencyId) : null));
 	}
 	for (const r of residencies) {
+		const who = whoToCall(null, r);
 		if (!r.startTime) {
-			add(r.venueId, 'every-week', { text: `${r.eventName} · no start time · ${DOW[r.dayOfWeek]}`, href: `?residency=${r.id}` }, r.organiserId);
+			add(r.venueId, 'every-week', `${r.eventName} · no start time · ${DOW[r.dayOfWeek]}`, r.id, who);
 		} else if (!r.lastConfirmed || daysBetween(r.lastConfirmed, weekStart) > SWEEP_DAYS) {
 			const when = r.lastConfirmed ? `last confirmed ${shortDate(r.lastConfirmed)}` : 'never confirmed';
-			add(r.venueId, 'sweep', { text: `${r.eventName} · ${when}`, href: `?residency=${r.id}` }, r.organiserId);
+			add(r.venueId, 'sweep', `${r.eventName} · ${when}`, r.id, who);
 		}
 	}
 	// Venues already in the book for a standing night but never asked question 6.
 	for (const r of residencies) {
 		const v = byId.get(r.venueId);
 		if (v && !v.conversationTest && !rows.has(v.id)) {
-			add(v.id, 'unclassified', { text: `register guessed from ${r.category.replaceAll('_', ' ')}`, href: `?residency=${r.id}` });
+			add(v.id, 'unclassified', `register guessed from ${r.category.replaceAll('_', ' ')}`, r.id, { kind: 'VENUE' });
 		}
 	}
 

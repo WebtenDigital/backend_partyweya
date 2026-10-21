@@ -51,6 +51,7 @@
 								</select>
 							</label>
 						</div>
+						<p class="text-[11px] text-dim">HOST is whose night it is — the name it’s sold on. MCEE works the mic on the night. If both, pick what the flyer bills them as.</p>
 						<label class="field"><span>Other spellings it answers to, comma-separated</span>
 							<input name="aliases" class="input h-11" value={a.aliases.join(', ')} placeholder="Clan Band, The Clan" />
 						</label>

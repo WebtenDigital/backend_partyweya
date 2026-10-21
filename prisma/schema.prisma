@@ -107,7 +107,8 @@ enum ActRole {
   COMEDIAN
   POET
   ACOUSTIC_ACT
-  HOST
+  HOST //  whose night it is — the recurring name it's sold on
+  MCEE //  who works the mic on the night; brought in to run the room
   ARTIST
   OTHER
 }
@@ -253,6 +254,11 @@ model Residency {
   organiser   Organiser? @relation(fields: [organiserId], references: [id])
   organiserId String? //  set when a promoter runs the night, not the venue
 
+  // The number ADVERTISED for this night — usually the flyer's reservations line.
+  // It belongs to the event, not to anyone we've identified; no entity is implied.
+  bookingPhone     String?
+  bookingPhoneNote String? // "for reservations", "VIP tables", "advance only"
+
   eventName String
   category  Category
   dayOfWeek Int //        1 = Monday … 7 = Sunday
@@ -313,6 +319,11 @@ model Occurrence {
 
   organiser   Organiser? @relation(fields: [organiserId], references: [id])
   organiserId String?
+
+  // The number ADVERTISED for this night — usually the flyer's reservations line.
+  // It belongs to the event, not to anyone we've identified; no entity is implied.
+  bookingPhone     String?
+  bookingPhoneNote String? // "for reservations", "VIP tables", "advance only"
 
   eventName String
   category  Category

@@ -15,6 +15,8 @@ import { lineupFrom, lineupSuggestions, newActsParam, unclassified } from '#lib/
 import { Invalid, failureMessage, money, oneOf, phone, slug, text, time } from '#lib/server/forms.js';
 import { kampalaToday, nextMonday } from '#lib/build/week.js';
 import { reminders } from '#lib/server/reminders.js';
+import { organiserFrom, organiserOptions } from '#lib/server/organisers.js';
+import { whoToCall, type NightContact, type Who } from '#lib/build/who.js';
 import type { Actions, PageServerLoad } from './$types';
 
 const editablePerk = (p: { id: string; kind: string; label: string; condition: string | null; activeUntil: Date | null }) => ({
@@ -34,12 +36,12 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			residencies: {
 				where: { active: true },
 				orderBy: { dayOfWeek: 'asc' },
-				include: { organiser: { select: { id: true, name: true, contactName: true, phone: true, whatsapp: true } }, perks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] } }
+				include: { organiser: { select: { id: true, name: true, contactName: true, role: true, phone: true, whatsapp: true } }, perks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] } }
 			},
 			occurrences: {
 				where: { date: { gte: asDate(today) }, status: { not: 'CANCELLED' } },
 				orderBy: { date: 'asc' },
-				include: { organiser: { select: { id: true, name: true, contactName: true, phone: true, whatsapp: true } }, perks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] } }
+				include: { organiser: { select: { id: true, name: true, contactName: true, role: true, phone: true, whatsapp: true } }, perks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] } }
 			}
 		}
 	});
@@ -51,10 +53,20 @@ export const load: PageServerLoad = async ({ params, url }) => {
 	const residencyId = url.searchParams.get('residency') ?? (ref && venue.residencies.some((r) => r.id === ref) ? ref : null);
 	const occurrenceId = url.searchParams.get('occurrence') ?? (ref && venue.occurrences.some((o) => o.id === ref) ? ref : null);
 	const tier = url.searchParams.get('tier');
+	// Who this call dials: the venue, the night's organiser, or the number its flyer
+	// printed. Unsaid, it's whoever the rule picks for the night it opened on.
+	const opened = occurrenceId ? venue.occurrences.find((o) => o.id === occurrenceId) : null;
+	const openedWho = opened
+		? whoToCall(opened, venue.residencies.find((r) => r.id === opened.residencyId))
+		: whoToCall(null, venue.residencies.find((r) => r.id === residencyId));
+	const asked = url.searchParams.get('dial');
+	const dial = asked === 'venue' || asked === 'organiser' || asked === 'booking' ? asked : ({ VENUE: 'venue', ORGANISER: 'organiser', UNKNOWN: 'booking' } as const)[openedWho.kind];
 	const week = url.searchParams.get('week');
 
 	return {
 		suggestions: await lineupSuggestions(),
+		organisers: await organiserOptions(),
+		dial,
 		caller: CALLER_NAME,
 		week: isWeek(week) ? week : nextMonday(today),
 		today,
@@ -88,6 +100,9 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			runningSince: kampalaDate(r.runningSince),
 			lineup: r.lineup,
 			organiser: r.organiser,
+			organiserId: r.organiserId,
+			bookingPhone: r.bookingPhone,
+			bookingPhoneNote: r.bookingPhoneNote,
 			perks: r.perks.map(editablePerk)
 		})),
 		occurrences: venue.occurrences.map((o) => ({
@@ -104,6 +119,10 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			register: o.register,
 			status: o.status,
 			organiser: o.organiser,
+			organiserId: o.organiserId,
+			residencyId: o.residencyId,
+			bookingPhone: o.bookingPhone,
+			bookingPhoneNote: o.bookingPhoneNote,
 			perks: o.perks.map(editablePerk)
 		})),
 		// Where the queue sent this call.
@@ -150,16 +169,34 @@ export const actions: Actions = {
 			});
 			if (!venue) throw new Invalid('No such venue');
 
-			// A promoter's night is a call to the promoter: the cadence and the
-			// verification are theirs, and the venue's are left alone.
+			// The night this call is about, and who the rule says owns it.
+			const contact = { organiserId: true, bookingPhone: true, bookingPhoneNote: true } as const;
 			const nightId = mode === 'standing' ? text(f, 'residencyId') : mode === 'dated' ? text(f, 'occurrenceId') : null;
-			const night =
-				mode === 'standing' && nightId
-					? await prisma.residency.findUnique({ where: { id: nightId }, select: { organiser: { select: { id: true, phone: true } } } })
-					: mode === 'dated' && nightId && nightId !== 'new'
-						? await prisma.occurrence.findUnique({ where: { id: nightId }, select: { organiser: { select: { id: true, phone: true } } } })
-						: null;
-			const organiser = night?.organiser ?? null;
+			let who: Who = { kind: 'VENUE' };
+			let levels: { occurrence?: string; residency?: string } = {};
+			if (mode === 'standing' && nightId) {
+				const r = await prisma.residency.findFirst({ where: { id: nightId, venueId: venue.id }, select: contact });
+				who = whoToCall(null, r);
+				levels = { residency: nightId };
+			} else if (mode === 'dated' && nightId && nightId !== 'new') {
+				const o = await prisma.occurrence.findFirst({
+					where: { id: nightId, venueId: venue.id },
+					select: { ...contact, residencyId: true, residency: { select: contact } }
+				});
+				who = whoToCall(o as NightContact | null, o?.residency);
+				levels = { occurrence: nightId, residency: o?.residencyId ?? undefined };
+			}
+
+			// Who was dialled decides whose cadence moves. Nothing here is automatic:
+			// an unknown number is only attributed by the caller saying whose it was.
+			const dial = text(f, 'dial') ?? 'venue';
+			if (dial === 'organiser' && who.kind !== 'ORGANISER') throw new Invalid('This night has no organiser to have called — log it as a call to the venue.');
+			if (dial === 'booking' && who.kind !== 'UNKNOWN') throw new Invalid('This night has no flyer number to have called.');
+			const ident = dial === 'booking' && reached ? text(f, 'ident') : null;
+			if (dial === 'booking' && reached && !['promoter', 'venue', 'neither'].includes(ident ?? ''))
+				throw new Invalid('Say whose number it turned out to be: a promoter, the venue, or neither.');
+			const callee: 'venue' | 'organiser' | null =
+				dial === 'venue' ? 'venue' : dial === 'organiser' ? 'organiser' : ident === 'promoter' ? 'organiser' : ident === 'venue' ? 'venue' : null;
 
 			const comingUp = text(f, 'comingUp');
 			const newPhone = f.has('phone') ? phone(f, 'phone') : venue.phone;
@@ -167,6 +204,24 @@ export const actions: Actions = {
 			const confirmed = { claimType: claimType as 'FACTUAL' | 'TRANSFERRED', source };
 
 			await prisma.$transaction(async (tx) => {
+				// Identification first: it decides who the rest of the call was with.
+				let organiserId = who.kind === 'ORGANISER' ? who.organiserId : null;
+				if (who.kind === 'UNKNOWN' && (ident === 'promoter' || ident === 'venue')) {
+					const level = who.from === 'occurrence' ? levels.occurrence : levels.residency;
+					if (!level) throw new Invalid('Couldn’t find the night that number is on.');
+					if (ident === 'promoter') {
+						organiserId = (await organiserFrom(tx, f, 'ident', who.phone)) ?? null;
+						if (!organiserId) throw new Invalid('Name the promoter — pick them or add them.');
+						// The number moves to them: it lives in exactly one place.
+						await tx.organiser.update({ where: { id: organiserId }, data: { phone: who.phone } });
+					} else {
+						await tx.venue.update({ where: { id: venue.id }, data: { phone: who.phone, phoneVerifiedAt: null } });
+					}
+					const moved = { ...(ident === 'promoter' && { organiserId }), bookingPhone: null, bookingPhoneNote: null };
+					if (who.from === 'occurrence') await tx.occurrence.update({ where: { id: level }, data: moved });
+					else await tx.residency.update({ where: { id: level }, data: moved });
+				}
+
 				// Contact details save whatever happened — finding a number is progress.
 				await tx.venue.update({
 					where: { id: venue.id },
@@ -177,37 +232,40 @@ export const actions: Actions = {
 						...(f.has('phone') && { phone: newPhone }),
 						// Reached on the number on file: it's verified. A number changed during the
 						// call hasn't been answered yet, so it starts unverified.
-						...(phoneChanged ? { phoneVerifiedAt: null } : reached && venue.phone && !organiser ? { phoneVerifiedAt: now } : {}),
+						...(phoneChanged ? { phoneVerifiedAt: null } : reached && venue.phone && dial === 'venue' ? { phoneVerifiedAt: now } : {}),
 						...(f.has('phone') && { whatsapp: f.get('whatsapp') === 'on' }),
 						...(f.has('bestTime') && { bestTimeToReach: text(f, 'bestTime') }),
-						...(!organiser && { nextContactDue: nextCall }),
-						...(reached && !organiser && { lastContacted: now }),
+						...(callee === 'venue' && { nextContactDue: nextCall }),
+						...(reached && callee === 'venue' && { lastContacted: now }),
 						// Question 6 is about the room, so only the venue's answer counts.
-						...(reached && !organiser && test && { conversationTest: test, provisionalRegister: register }),
+						...(reached && callee === 'venue' && test && { conversationTest: test, provisionalRegister: register }),
 						...(reached && comingUp && {
 							notes: [venue.notes, `${today} coming up: ${comingUp}`].filter(Boolean).join('\n')
 						})
 					}
 				});
-				if (organiser) {
+				if (callee === 'organiser' && organiserId) {
 					await tx.organiser.update({
-						where: { id: organiser.id },
+						where: { id: organiserId },
 						data: {
 							nextContactDue: nextCall,
-							...(reached && { lastContacted: now }),
-							...(reached && organiser.phone && { phoneVerifiedAt: now })
+							...(reached && { lastContacted: now, phoneVerifiedAt: now })
 						}
 					});
 				}
 				if (!reached) return;
 
 				// Question 6 classes the room, so every standing night here takes its answer.
-				if (register && !organiser) {
+				if (register && callee === 'venue') {
 					await tx.residency.updateMany({
 						where: { venueId: venue.id, active: true },
 						data: { register }
 					});
 				}
+
+				// Question 8 — who to call about this night from now on. Reroutes every future call.
+				const q8 = await organiserFrom(tx, f, 'q8');
+				const routed = q8 !== undefined ? { organiserId: q8 } : {};
 
 				if (mode === 'standing') {
 					const id = text(f, 'residencyId');
@@ -221,6 +279,7 @@ export const actions: Actions = {
 							...(text(f, 's_gate') && { priceGate: money(f, 's_gate', 'Gate price') }),
 							...(lineupFrom(f, 's_lineup')?.length && { lineup: lineupFrom(f, 's_lineup') }),
 							lastConfirmed: now,
+							...routed,
 							...confirmed
 						}
 					});
@@ -248,6 +307,7 @@ export const actions: Actions = {
 						status: 'CONFIRMED' as const,
 						confirmedOn: now,
 						confirmedBy: CALLER_NAME,
+						...routed,
 						...confirmed
 					};
 					const existing = text(f, 'occurrenceId');

@@ -2,7 +2,7 @@
 // case-insensitive — and spotting near-misses before they become two acts.
 // The billing sentence itself is composed in SQL (compose_billing), in one place.
 
-export const ROLES = ['BAND', 'DJ', 'COMEDIAN', 'POET', 'ACOUSTIC_ACT', 'HOST', 'ARTIST', 'OTHER'] as const;
+export const ROLES = ['BAND', 'DJ', 'COMEDIAN', 'POET', 'ACOUSTIC_ACT', 'HOST', 'MCEE', 'ARTIST', 'OTHER'] as const;
 export type ActRole = (typeof ROLES)[number];
 
 export const ROLE_LABEL: Record<ActRole, string> = {
@@ -12,6 +12,7 @@ export const ROLE_LABEL: Record<ActRole, string> = {
 	POET: 'Poets',
 	ACOUSTIC_ACT: 'Acoustic acts',
 	HOST: 'Hosts',
+	MCEE: 'MCees',
 	ARTIST: 'Artists',
 	OTHER: 'Other'
 };

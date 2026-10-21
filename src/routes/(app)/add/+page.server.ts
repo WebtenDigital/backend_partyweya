@@ -3,14 +3,15 @@ import { CALLER_NAME } from '$app/env/private';
 import { prisma, Category, Register } from '#lib/server/prisma.js';
 import { addPerks } from '#lib/server/perks.js';
 import { lineupFrom, lineupSuggestions, newActsParam, unclassified } from '#lib/server/acts.js';
-import { Invalid, failureMessage, money, oneOf, slug, text, time } from '#lib/server/forms.js';
+import { Invalid, failureMessage, money, oneOf, phone, slug, text, time } from '#lib/server/forms.js';
+import { organiserFrom, organiserOptions } from '#lib/server/organisers.js';
 import { asDate, kampalaDate } from '#lib/server/register.js';
 import { PROVENANCE, REPEATS, isoDay, mondayOf, nextOn, type Repeat } from '#lib/build/add.js';
 import { kampalaToday } from '#lib/build/week.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url }) => {
-	const [venues, residencies, zones, suggestions] = await Promise.all([
+	const [venues, residencies, zones, suggestions, organisers] = await Promise.all([
 		prisma.venue.findMany({
 			orderBy: { name: 'asc' },
 			select: {
@@ -39,12 +40,14 @@ export const load: PageServerLoad = async ({ url }) => {
 			}
 		}),
 		prisma.zone.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' } }),
-		lineupSuggestions()
+		lineupSuggestions(),
+		organiserOptions()
 	]);
 
 	return {
 		caller: CALLER_NAME,
 		suggestions,
+		organisers,
 		today: kampalaToday(),
 		venueId: url.searchParams.get('venue'),
 		venues: venues.map((v) => ({
@@ -111,6 +114,14 @@ export const actions: Actions = {
 				const register = oneOf(Register, text(f, 'register'), 'register');
 				// The act: overwritten on a merge only when one is given.
 				const lineup = lineupFrom(f) ?? [];
+				// Routing, internal: who runs it — only when a promoter or agent told you, and only
+				// if you say so (they sometimes pass on nights that aren't theirs) — and the flyer's number.
+				const organiserId = source === 'PROMOTER' || source === 'AGENT' ? await organiserFrom(tx, f, 'who') : undefined;
+				const bookingPhone = phone(f, 'bookingPhone');
+				const routing = {
+					...(organiserId && { organiserId }),
+					...(bookingPhone && { bookingPhone, bookingPhoneNote: text(f, 'bookingPhoneNote') })
+				};
 
 				// 3 · the answer to "does it repeat?" picks the table.
 				if (repeat === 'weekly') {
@@ -137,6 +148,7 @@ export const actions: Actions = {
 						...(lineup.length && { lineup }),
 						...(running && { runningSince: asDate(`${running}-01`) }),
 						lastConfirmed: confirmed ? now : null,
+						...routing,
 						...confirmation
 					};
 					const existing =
@@ -188,6 +200,7 @@ export const actions: Actions = {
 								priceAdvance: money(f, 'advance', 'Advance price'),
 								register,
 								...(lineup.length && { lineup }),
+								...routing,
 								status: confirmed ? ('CONFIRMED' as const) : ('LEAD' as const)
 							};
 				const fields = {

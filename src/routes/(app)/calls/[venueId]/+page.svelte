@@ -4,6 +4,8 @@
 	import PerksEditor from '#lib/components/PerksEditor.svelte';
 	import LineupInput from '#lib/components/LineupInput.svelte';
 	import Reminders from '#lib/components/Reminders.svelte';
+	import OrganiserPicker from '#lib/components/OrganiserPicker.svelte';
+	import { UNKNOWN_LABEL, whoToCall } from '#lib/build/who.js';
 	import { CADENCE, Q6 } from '#lib/build/calls.js';
 	import { shortDate } from '#lib/build/week.js';
 	import type { PageProps } from './$types';
@@ -47,8 +49,28 @@
 
 	const residency = $derived(data.residencies.find((r) => r.id === residencyId));
 	const occurrence = $derived(data.occurrences.find((o) => o.id === occurrenceId));
-	// The night being logged belongs to an organiser: they're who to ask, not the venue.
-	const organiser = $derived(mode === 'standing' ? residency?.organiser : mode === 'dated' ? occurrence?.organiser : null);
+	// Who the rule says owns the night being logged — the same rule as the panel and the queue.
+	const who = $derived(
+		mode === 'standing'
+			? whoToCall(null, residency)
+			: mode === 'dated' && occurrence
+				? whoToCall(occurrence, data.residencies.find((r) => r.id === occurrence.residencyId))
+				: ({ kind: 'VENUE' } as const)
+	);
+	const organiser = $derived(
+		who.kind !== 'ORGANISER'
+			? null
+			: who.from === 'occurrence'
+				? occurrence?.organiser
+				: (residency ?? data.residencies.find((r) => r.id === occurrence?.residencyId))?.organiser
+	);
+	// svelte-ignore state_referenced_locally — fixed by the link that opened this call.
+	const dial = data.dial;
+	let ident = $state('');
+	// Question 6 and the venue's cadence belong to whoever answers for the room.
+	const venueOnLine = $derived(dial === 'venue' || (dial === 'booking' && ident === 'venue'));
+	// Question 8's picker edits the level being logged: the rule, or this date.
+	const ownOrganiser = $derived(mode === 'standing' ? (residency?.organiserId ?? null) : mode === 'dated' ? (occurrence?.organiserId ?? null) : null);
 	// TRANSFERRED: someone in the lineup whose own act record transfers. The database checks it too.
 	const transferredOk = $derived(
 		mode !== 'none' && lineup.some((n) => data.suggestions.find((s) => s.name.toLowerCase() === n.toLowerCase())?.transfers === true)
@@ -91,7 +113,7 @@
 		data.residencies.length > 1 && new Set(data.residencies.map((r) => r.register)).size === 1
 	);
 	const defaultSource = $derived(
-		organiser ? 'PROMOTER' : ({ OWNER: 'OWNER', PROMOTER: 'PROMOTER', MANAGER: 'MANAGER', MARKETING: 'MANAGER', HOST: 'MANAGER' } as Record<string, string>)[
+		dial === 'organiser' || ident === 'promoter' ? 'PROMOTER' : ({ OWNER: 'OWNER', PROMOTER: 'PROMOTER', MANAGER: 'MANAGER', MARKETING: 'MANAGER', HOST: 'MANAGER' } as Record<string, string>)[
 			data.venue.contactRole ?? ''
 		] ?? 'OWNER'
 	);
@@ -126,6 +148,7 @@
 >
 	<input type="hidden" name="week" value={data.week} />
 	<input type="hidden" name="mode" value={mode} />
+	<input type="hidden" name="dial" value={dial} />
 
 	<header class="flex flex-wrap items-end justify-between gap-4 border-b border-line px-4 py-6 sm:px-6">
 		<div class="flex items-center gap-5">
@@ -146,7 +169,11 @@
 
 	<div class="grid gap-6 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_300px]">
 		<main class="min-w-0 space-y-4">
-			{#if organiser}
+			{#if dial === 'organiser' && !organiser}
+				<p class="rounded-md border border-energy/50 bg-energy/10 px-4 py-3 text-sm">
+					This call was opened to dial an organiser, but the night selected has none. Pick their night, or go back and call the venue.
+				</p>
+			{:else if dial === 'organiser' && organiser}
 				<p class="rounded-md border border-dated/50 bg-dated/10 px-4 py-3 text-sm">
 					<span class="font-mono text-[10px] tracking-wider text-dated">ORGANISER’S NIGHT</span><br />
 					Call <strong>{organiser.contactName ?? organiser.name}</strong>{organiser.contactName ? ` (${organiser.name})` : ''}
@@ -154,8 +181,40 @@
 					about a promoter’s night gets “I think so?”, which would be logged as confirmation.
 				</p>
 			{/if}
+			{#if dial === 'booking'}
+				<section class="panel space-y-3 border-social/50">
+					<h2 class="font-semibold"><span class="mr-2 font-mono text-xs text-dim">0</span>Whose number is this?</h2>
+					{#if who.kind === 'UNKNOWN'}
+						<p class="font-mono text-sm">
+							{who.phone}{who.note ? ` · ${who.note}` : ''}
+							<span class="ml-1 text-xs text-social">{UNKNOWN_LABEL}</span>
+						</p>
+						<blockquote class="border-l-4 border-l-line pl-3">
+							“Hi — I got this number off the flyer for {mode === 'standing' ? residency?.eventName : occurrence?.eventName} at
+							{data.venue.name}. Am I through to the right person about it? Who am I speaking to?”
+						</blockquote>
+						<div class="grid gap-2 sm:grid-cols-3">
+							{#each [['promoter', 'A promoter', 'Add them, link the night, and the number moves to them.'], ['venue', data.venue.name, 'It becomes the venue’s number, unverified.'], ['neither', 'Neither', 'A ticket seller, a hostess line — the number stays on the night, and that’s fine.']] as [key, title, effect] (key)}
+								<label class="cursor-pointer rounded-md border p-3 text-sm {ident === key ? 'border-social bg-ink' : 'border-line hover:border-dim'}">
+									<input type="radio" name="ident" value={key} bind:group={ident} class="sr-only" />
+									<span class="block font-semibold">{title}</span>
+									<span class="text-xs text-dim">{effect}</span>
+								</label>
+							{/each}
+						</div>
+						{#if ident === 'promoter'}
+							<OrganiserPicker name="ident" organisers={data.organisers} numberFrom={who.phone} placeholder="Who did you get? Search, or type their name" />
+						{:else if ident === 'venue' && data.venue.phone && data.venue.phone !== who.phone}
+							<p class="text-xs text-social">Replaces {data.venue.phone} as {data.venue.name}’s number.</p>
+						{/if}
+						<p class="text-xs text-dim">Only recorded if you reach someone. Nothing is attributed unless you pick it.</p>
+					{:else}
+						<p class="text-sm text-energy">The night selected has no flyer number. Pick the night whose number you rang.</p>
+					{/if}
+				</section>
+			{/if}
 			<blockquote class="panel border-l-4 border-l-line">
-				“Hi, is this {data.venue.contactName ?? '[name]'}? I’m {data.caller} from PartyWeya — we cover what’s happening
+				“Hi, is this {dial === 'organiser' ? (organiser?.contactName ?? organiser?.name ?? '[name]') : dial === 'booking' ? '[name]' : (data.venue.contactName ?? '[name]')}? I’m {data.caller} from PartyWeya — we cover what’s happening
 				around Kampala nightlife, and <strong>listings are free</strong>. I’m putting this week together and I want to get
 				your details right. Two minutes?”
 			</blockquote>
@@ -257,10 +316,11 @@
 				{/if}
 			</section>
 
-			{#if organiser}
+			{#if !venueOnLine}
 				<p class="panel text-xs text-dim">
-					<span class="mr-2 font-mono text-dim">6</span>Question 6 is about the room, so it’s asked of {data.venue.name}, not the
-					organiser. This call won’t record an answer to it — or move {data.venue.name}’s next-call date.
+					<span class="mr-2 font-mono text-dim">6</span>Question 6 is about the room, so it’s asked of {data.venue.name}, not
+					{dial === 'organiser' ? 'the organiser' : 'whoever this number turns out to be'}. This call won’t record an answer to it — or move
+					{data.venue.name}’s next-call date.
 				</p>
 			{:else}
 			<section class="panel space-y-3 border-chill/40 bg-chill/5">
@@ -301,6 +361,15 @@
 					<span>“Anything coming up in the next few weeks I should know about?”</span>
 					<textarea name="comingUp" rows="3" class="input" placeholder="Goes into the venue’s notes, dated. Log a dated night for anything firm."></textarea>
 				</label>
+				{#if mode !== 'none' && ident !== 'promoter'}
+					<div class="field">
+						<span>“Who’s the best person to call about this each time — you, or someone else?” Recording a promoter reroutes every future call about {mode === 'standing' ? 'this standing night' : 'this date'}.</span>
+						{#key `${mode}-${residencyId}-${occurrenceId}`}
+							<OrganiserPicker name="q8" organisers={data.organisers} value={ownOrganiser} placeholder="Someone else? Search organisers, or type a new name" />
+						{/key}
+					</div>
+				{/if}
+				{#if dial === 'venue'}
 				<div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_160px_180px]">
 					<label class="field"><span>Best person to call</span><input name="contactName" class="input" value={data.venue.contactName ?? ''} placeholder="—" /></label>
 					<label class="field"><span>Their role</span>
@@ -317,6 +386,7 @@
 					</label>
 					<input name="bestTime" class="input" value={data.venue.bestTimeToReach ?? ''} placeholder="Best time to reach them" />
 				</div>
+				{/if}
 			</section>
 
 			<blockquote class="panel border-l-4 border-l-line">

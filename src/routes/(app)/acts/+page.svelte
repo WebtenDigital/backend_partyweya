@@ -8,11 +8,11 @@
 	let { data, form }: PageProps = $props();
 
 	const EDGE: Record<string, string> = {
-		BAND: 'border-l-energy', DJ: 'border-l-social', COMEDIAN: 'border-l-chill', HOST: 'border-l-vetted',
+		BAND: 'border-l-energy', DJ: 'border-l-social', COMEDIAN: 'border-l-chill', HOST: 'border-l-vetted', MCEE: 'border-l-vetted',
 		ARTIST: 'border-l-dated', POET: 'border-l-chill', ACOUSTIC_ACT: 'border-l-chill', OTHER: 'border-l-dim', NONE: 'border-l-social'
 	};
 	const TONE: Record<string, string> = {
-		BAND: 'text-energy', DJ: 'text-social', COMEDIAN: 'text-chill', HOST: 'text-vetted',
+		BAND: 'text-energy', DJ: 'text-social', COMEDIAN: 'text-chill', HOST: 'text-vetted', MCEE: 'text-vetted',
 		ARTIST: 'text-dated', POET: 'text-chill', ACOUSTIC_ACT: 'text-chill', OTHER: 'text-dim', NONE: 'text-social'
 	};
 
