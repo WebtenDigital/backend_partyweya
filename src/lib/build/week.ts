@@ -2,10 +2,12 @@
 // that decides whether it is publishable before any copy gets written.
 // Pure — no database — so it can be checked against fixtures.
 
+import { vouchDay, vouchExpires, vouchExpiry, vouchState } from './vouch.js';
+
 export type Register = 'CHILL' | 'SOCIAL' | 'HIGH_ENERGY';
 export const REGISTERS: Register[] = ['CHILL', 'SOCIAL', 'HIGH_ENERGY'];
 
-// Rule F5: a VETTED claim only counts if the attendance behind it is this recent.
+// Rule F5: how long a confirmation stays fresh (a vouch's own 4–6 weeks is in vouch.ts).
 export const F5_WINDOW_DAYS = 28;
 // A standing night stays confirmed for one monthly sweep after its last call.
 export const SWEEP_DAYS = 35;
@@ -54,6 +56,8 @@ export interface ResidencyIn {
 	claimType: string | null;
 	source: string | null;
 	lastConfirmed: string | null; // YYYY-MM-DD
+	attendedAt: string | null; // YYYY-MM-DD — the night we were in the room
+	attendedBy: string | null;
 	lineup: string[]; // the resident billing, in order
 	perks: PerkIn[];
 }
@@ -73,6 +77,8 @@ export interface OccurrenceIn {
 	source: string | null;
 	status: 'LEAD' | 'CONFIRMED' | 'CHANGED' | 'CANCELLED';
 	confirmedOn: string | null; // YYYY-MM-DD
+	attendedAt: string | null;
+	attendedBy: string | null;
 	lineup: string[]; // empty = the standing night's
 	perks: PerkIn[];
 }
@@ -97,7 +103,9 @@ export interface Row {
 	perks: Perk[];
 	claimType: string | null;
 	source: string | null;
-	checkedOn: string | null; // when it was confirmed (or attended, for VETTED)
+	checkedOn: string | null; // when it was last confirmed
+	attendedAt: string | null; // when we were last in the room — what ages a vouch (vouch.ts)
+	attendedBy: string | null;
 	state: RowState;
 	missing: string[]; // for gaps: time, cover, register
 }
@@ -182,6 +190,8 @@ export function buildWeek(
 				claimType: o.claimType,
 				source: o.source,
 				checkedOn: o.confirmedOn,
+				attendedAt: o.attendedAt,
+				attendedBy: o.attendedBy,
 				state:
 					o.status === 'CHANGED'
 						? 'changed'
@@ -211,6 +221,8 @@ export function buildWeek(
 			claimType: r.claimType,
 			source: r.source,
 			checkedOn: r.lastConfirmed,
+			attendedAt: r.attendedAt,
+			attendedBy: r.attendedBy,
 			state: stateOf(confirmed, r.startTime, r.register),
 			missing: missingOf(r.startTime, r.priceGate, r.register)
 		});
@@ -238,6 +250,8 @@ export function buildWeek(
 			claimType: o.claimType,
 			source: o.source,
 			checkedOn: o.confirmedOn,
+			attendedAt: o.attendedAt,
+			attendedBy: o.attendedBy,
 			state: o.status === 'CHANGED' ? 'changed' : stateOf(o.status === 'CONFIRMED', o.startTime, o.register),
 			missing: missingOf(o.startTime, o.priceGate, o.register)
 		});
@@ -257,6 +271,7 @@ export interface Check {
 	label: string;
 	pass: boolean | null; // null = not wired yet; not counted
 	detail: string;
+	forecast?: string; // one line about what happens next, under the detail
 }
 
 export interface Gate {
@@ -270,7 +285,7 @@ export interface Gate {
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-export function gate(weekStart: string, rows: Row[]): Gate {
+export function gate(weekStart: string, rows: Row[], today = kampalaToday()): Gate {
 	const pub = rows.filter((r) => r.state === 'publishable');
 	const heldBack = rows.filter((r) => r.state === 'needs-time').length;
 
@@ -278,10 +293,24 @@ export function gate(weekStart: string, rows: Row[]): Gate {
 	for (const r of pub) registers[r.register!]++;
 	const absent = REGISTERS.filter((r) => registers[r] === 0);
 
-	const inWindow = (r: Row) => r.checkedOn != null && daysBetween(r.checkedOn, weekStart) <= F5_WINDOW_DAYS;
-	const vetted = pub.filter((r) => r.claimType === 'VETTED' && inWindow(r)).sort((a, b) => b.checkedOn!.localeCompare(a.checkedOn!));
+	// A vouch counts while it's in date for the build week (Rule F5, vouch.ts) — EXPIRING
+	// included: that's a warning, not a lapse. The claim itself never changes.
+	const vetted = pub.filter((r) => r.claimType === 'VETTED');
+	const live = vetted
+		.filter((r) => ['LIVE', 'EXPIRING'].includes(vouchState(r.attendedAt, weekStart)))
+		.sort((a, b) => a.attendedAt!.localeCompare(b.attendedAt!));
+	// Why there's no live vouch is diagnosed across every row in the week, publishable or not:
+	// "no attendance" is only ever said when there truly is none.
+	const attended = rows.filter((r) => r.source === 'ATTENDED');
+	const lapsed = attended
+		.filter((r) => vouchState(r.attendedAt, weekStart) === 'EXPIRED')
+		.sort((a, b) => b.attendedAt!.localeCompare(a.attendedAt!));
+	// In date, but the row itself can't publish — usually its monthly call is overdue.
+	const held = attended.filter((r) => r.state !== 'publishable' && ['LIVE', 'EXPIRING'].includes(vouchState(r.attendedAt, weekStart)));
+	const undated = vetted.filter((r) => !r.attendedAt);
 	// Attendance that never became VETTED is a broken write, not a missing night out — say which.
-	const unpromoted = pub.filter((r) => r.source === 'ATTENDED' && r.claimType !== 'VETTED' && inWindow(r));
+	const unpromoted = attended.filter((r) => r.claimType !== 'VETTED');
+	const named = (rs: Row[]) => rs.map((r) => `${r.eventName} · ${r.venue.name}`).join('; ');
 
 	const timed = pub.filter((r) => r.startTime).length;
 	const checks: Check[] = [
@@ -301,12 +330,22 @@ export function gate(weekStart: string, rows: Row[]): Gate {
 		},
 		{
 			label: 'At least one vetted claim',
-			pass: vetted.length > 0,
-			detail: vetted.length
-				? `${vetted.length} vetted, newest ${shortDate(vetted[0].checkedOn!)} — inside Rule F5’s window`
+			pass: live.length > 0,
+			detail: live.length
+				? `${plural(live.length, 'vetted row')} attended inside Rule F5’s window`
 				: unpromoted.length
-					? `${unpromoted.map((r) => `${r.eventName} · ${r.venue.name}`).join('; ')}: attended inside the window, but the claim did not promote to VETTED (it reads ${unpromoted[0].claimType ?? 'no claim'}). That's a write bug, not a missing night out.`
-					: 'No attendance inside Rule F5’s window — the set is a listing, not curation'
+					? `${named(unpromoted)}: attended, but the claim did not promote to VETTED (it reads ${unpromoted[0].claimType ?? 'no claim'}). That's a write bug, not a missing night out.`
+					: held.length
+						? `${named(held)}: ${held.length === 1 ? 'a vouch still in date' : 'vouches still in date'} (${vouchExpiry(held[0].attendedAt!, today)}), but not publishable this week — ${held[0].missing.length ? `needs ${held[0].missing.join(' + ')}` : 'needs its call to confirm it’s on'}.`
+						: lapsed.length
+							? `Every vouch has aged out — ${lapsed[0].venue.name}’s ${vouchExpiry(lapsed[0].attendedAt!, today).replace(/^vouch expires (.*)$/, 'vouch expires $1, before this week')}. Being there again is the only fix; a call can’t renew it.`
+							: undated.length
+								? `${named(undated)}: VETTED with no attendance date — log when you were there.`
+								: 'No attendance inside Rule F5’s window — the set is a listing, not curation',
+			forecast: live.length
+				? `${plural(live.length, 'live vouch', 'live vouches')} · next expires ${vouchDay(vouchExpires(live[0].attendedAt!))}` +
+					(lapsed.length ? ` · ${lapsed[0].venue.name} ${vouchExpiry(lapsed[0].attendedAt!, today)}` : '')
+				: undefined
 		},
 		{
 			label: 'Nothing padded to hit a number',

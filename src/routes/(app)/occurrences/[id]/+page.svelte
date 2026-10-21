@@ -3,6 +3,7 @@
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
 	import Reminders from '#lib/components/Reminders.svelte';
 	import CallPanel from '#lib/components/CallPanel.svelte';
+	import VouchPanel from '#lib/components/VouchPanel.svelte';
 	import OrganiserPicker from '#lib/components/OrganiserPicker.svelte';
 	import PerksEditor from '#lib/components/PerksEditor.svelte';
 	import LineupInput from '#lib/components/LineupInput.svelte';
@@ -145,6 +146,7 @@
 					<span class="mt-1 block text-social">Confirmed, but no start time — the one field stopping it publishing.</span>
 				{/if}
 			</CallPanel>
+			<VouchPanel ref={o.id} attendedAt={o.attendedAt} attendedBy={o.attendedBy} today={data.today} week={data.week} justLogged={data.justLogged} />
 		</aside>
 	</div>
 

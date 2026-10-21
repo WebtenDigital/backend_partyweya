@@ -8,7 +8,7 @@
 		"build": "vite build",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
-		"test": "node --test src/lib/*.test.ts",
+		"test": "node --import ./scripts/test-resolve.mjs --test src/lib/*.test.ts src/lib/build/*.test.ts",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"import:register": "node scripts/import-register.mjs"

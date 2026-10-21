@@ -38,6 +38,8 @@
 		data.queue.filter((r) => (r.callWho === 'organiser' ? !r.organiser?.phone : r.callWho === 'venue' ? !r.venue.phone : false)).length
 	);
 	const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+	const REGISTER_TONE: Record<string, string> = { CHILL: 'text-chill', SOCIAL: 'text-social', HIGH_ENERGY: 'text-energy' };
+	const dayLabel = (date: string) => `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(`${date}T00:00:00Z`).getUTCDay()]} ${shortDate(date)}`;
 </script>
 
 <svelte:head>
@@ -102,7 +104,9 @@
 				</p>
 			{/if}
 
-			{#each groups as g (g.key)}
+			<!-- The two blocking groups, then vouches running out, then the rest: an unpublishable
+			     row this week beats a vouch expiring in a fortnight. -->
+			{#snippet group(g: (typeof groups)[number])}
 				<section class="mb-7">
 					<div class="mb-2 flex items-center gap-3 font-mono text-xs">
 						<h2 class="font-semibold tracking-wider uppercase {TONE[g.key]}">{g.label}</h2>
@@ -179,6 +183,43 @@
 						{/each}
 					</div>
 				</section>
+			{/snippet}
+			{#each groups.filter((g) => g.key === 'this-week' || g.key === 'every-week') as g (g.key)}
+				{@render group(g)}
+			{/each}
+
+			<section id="vouches" class="mb-7 scroll-mt-4">
+				<div class="mb-1 flex items-center gap-3 font-mono text-xs">
+					<h2 class="font-semibold tracking-wider text-vetted uppercase">Vouches running out</h2>
+					<span class="text-dim">a vetted night you need to visit again</span>
+					<span class="h-px flex-1 bg-line"></span>
+					<span class="text-dim">{data.vouches.items.length}</span>
+				</div>
+				<p class="mb-2 text-sm text-vetted">{data.vouches.target}</p>
+				{#if !data.vouches.items.length}
+					<p class="rounded-md border border-dashed border-line px-4 py-3 text-sm text-dim">Every vouch in this week is live.</p>
+				{/if}
+				<div class="space-y-2">
+					{#each data.vouches.items as v (v.ref)}
+						<div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 rounded-md border border-l-4 border-line bg-panel px-4 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_110px_200px_170px] {v.state === 'EXPIRED' ? 'border-l-energy' : 'border-l-social'}">
+							<div class="min-w-0">
+								<a href={v.record} class="font-semibold hover:underline">{v.eventName}</a>
+								<p class="text-xs text-dim">{v.venue}</p>
+							</div>
+							<span class="font-mono text-[10px] tracking-wider {v.register ? REGISTER_TONE[v.register] : 'text-dim'}">{v.register?.replace('_', '-') ?? 'NO REGISTER'}</span>
+							<div class="col-span-2 text-xs sm:col-span-1">
+								<p class={v.state === 'EXPIRED' ? 'text-energy' : 'text-social'}><span class="font-mono text-[10px] tracking-wider">{v.state} THIS WEEK</span> · {v.expiry}</p>
+								<p class="text-dim">attended {shortDate(v.attendedAt)}{v.attendedBy ? ` · ${v.attendedBy}` : ''}</p>
+							</div>
+							<!-- Not a call: the phone can't renew a judgement about a room. -->
+							<a href={v.record} class="btn col-span-2 flex h-10 items-center justify-center text-xs sm:col-span-1">Plan a visit · {dayLabel(v.date)}</a>
+						</div>
+					{/each}
+				</div>
+			</section>
+
+			{#each groups.filter((g) => g.key !== 'this-week' && g.key !== 'every-week') as g (g.key)}
+				{@render group(g)}
 			{/each}
 
 			<!-- Sixth: written by hand. Always below the derived groups — an overdue flyer is not
@@ -213,6 +254,7 @@
 							<div>
 								<p>{c.label}</p>
 								<p class="text-xs text-dim">{c.detail}</p>
+								{#if c.forecast}<p class="font-mono text-[11px] text-vetted/80">{c.forecast}</p>{/if}
 							</div>
 						</li>
 					{/each}

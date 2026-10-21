@@ -16,7 +16,7 @@ import { Invalid, failureMessage, money, oneOf, phone, slug, text, time } from '
 import { kampalaToday, nextMonday } from '#lib/build/week.js';
 import { reminders } from '#lib/server/reminders.js';
 import { organiserFrom, organiserOptions } from '#lib/server/organisers.js';
-import { claimFor } from '#lib/provenance.js';
+import { claimFor, sourceAfter } from '#lib/provenance.js';
 import { lineupTransfers } from '#lib/server/provenance.js';
 import { whoToCall, type NightContact, type Who } from '#lib/build/who.js';
 import type { Actions, PageServerLoad } from './$types';
@@ -267,12 +267,16 @@ export const actions: Actions = {
 				const routed = q8 !== undefined ? { organiserId: q8 } : {};
 
 				// What the row will bill decides TRANSFERRED: doubt an act, leave them off the lineup.
-				const provenance = async (billed: string[]) => ({ source, claimType: claimFor(source, await lineupTransfers(billed, tx)) });
+				// A call never overwrites attendance (sourceAfter): it moves lastConfirmed, not the vouch.
+				const provenance = async (billed: string[], stored: Source | null) => {
+					const kept = sourceAfter(stored, source);
+					return { source: kept, claimType: claimFor(kept, await lineupTransfers(billed, tx)) };
+				};
 
 				if (mode === 'standing') {
 					const id = text(f, 'residencyId');
 					if (!id) throw new Invalid('Pick the standing night you fixed.');
-					const rule = await tx.residency.findFirst({ where: { id, venueId: venue.id }, select: { lineup: true } });
+					const rule = await tx.residency.findFirst({ where: { id, venueId: venue.id }, select: { lineup: true, source: true } });
 					if (!rule) throw new Invalid('That standing night isn’t at this venue.');
 					const sLineup = lineupFrom(f, 's_lineup');
 					await tx.residency.update({
@@ -285,7 +289,7 @@ export const actions: Actions = {
 							...(sLineup?.length && { lineup: sLineup }),
 							lastConfirmed: now,
 							...routed,
-							...(await provenance(sLineup?.length ? sLineup : rule.lineup))
+							...(await provenance(sLineup?.length ? sLineup : rule.lineup, rule.source))
 						}
 					});
 					await savePerks(tx, { residencyId: id }, f);
@@ -294,11 +298,12 @@ export const actions: Actions = {
 				if (mode === 'dated') {
 					const lineup = lineupFrom(f, 'd_lineup') ?? [];
 					const existing = text(f, 'occurrenceId');
-					// An empty lineup shows the standing night's, so the claim is judged on that.
-					const standing =
-						!lineup.length && existing && existing !== 'new'
-							? (await tx.occurrence.findFirst({ where: { id: existing, venueId: venue.id }, select: { residency: { select: { lineup: true } } } }))?.residency
+					const stored =
+						existing && existing !== 'new'
+							? await tx.occurrence.findFirst({ where: { id: existing, venueId: venue.id }, select: { source: true, residency: { select: { lineup: true } } } })
 							: null;
+					// An empty lineup shows the standing night's, so the claim is judged on that.
+					const standing = lineup.length ? null : stored?.residency;
 					const date = text(f, 'd_date');
 					const eventName = text(f, 'd_name');
 					if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Invalid('A dated night needs its date.');
@@ -318,7 +323,7 @@ export const actions: Actions = {
 						confirmedOn: now,
 						confirmedBy: CALLER_NAME,
 						...routed,
-						...(await provenance(lineup.length ? lineup : (standing?.lineup ?? [])))
+						...(await provenance(lineup.length ? lineup : (standing?.lineup ?? []), stored?.source ?? null))
 					};
 					if (existing && existing !== 'new') {
 						await tx.occurrence.update({ where: { id: existing, venueId: venue.id }, data: fields });

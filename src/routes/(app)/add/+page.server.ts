@@ -5,7 +5,7 @@ import { addPerks } from '#lib/server/perks.js';
 import { lineupFrom, lineupSuggestions, newActsParam, unclassified } from '#lib/server/acts.js';
 import { Invalid, failureMessage, money, oneOf, phone, slug, text, time } from '#lib/server/forms.js';
 import { organiserFrom, organiserOptions } from '#lib/server/organisers.js';
-import { claimFor } from '#lib/provenance.js';
+import { claimFor, sourceAfter } from '#lib/provenance.js';
 import { lineupTransfers } from '#lib/server/provenance.js';
 import type { Source } from '#lib/server/prisma.js';
 import { asDate, kampalaDate } from '#lib/server/register.js';
@@ -107,10 +107,11 @@ export const actions: Actions = {
 				}
 
 				// Derived from the source and the lineup the row will actually bill, in this transaction.
-				const provenance = async (billed: string[]) => ({
-					source: source as Source,
-					claimType: claimFor(source as Source, await lineupTransfers(billed, tx))
-				});
+				// Merging into a night already attended keeps the attendance (sourceAfter).
+				const provenance = async (billed: string[], stored: Source | null = null) => {
+					const kept = sourceAfter(stored, source as Source);
+					return { source: kept, claimType: claimFor(kept, await lineupTransfers(billed, tx)) };
+				};
 				const startTime = time(f, 'start', 'Start');
 				const endTime = time(f, 'end', 'Wrap');
 				const priceGate = money(f, 'gate', 'Gate price');
@@ -160,7 +161,7 @@ export const actions: Actions = {
 								})
 							: null;
 					// A merge with no act given keeps the night's existing one — and is judged on it.
-					Object.assign(data, await provenance(lineup.length ? lineup : (existing?.lineup ?? [])));
+					Object.assign(data, await provenance(lineup.length ? lineup : (existing?.lineup ?? []), existing?.source));
 					let id: string;
 					if (existing) {
 						id = existing.id;
@@ -215,7 +216,7 @@ export const actions: Actions = {
 				const billed = lineup.length ? lineup : existing?.lineup.length ? existing.lineup : (residency?.lineup ?? []);
 				const fields = {
 					...data,
-					...(await provenance(billed)),
+					...(await provenance(billed, existing?.source)),
 					residencyId: residency?.id ?? null,
 					confirmedOn: confirmed ? now : null,
 					confirmedBy: confirmed ? CALLER_NAME : null

@@ -42,6 +42,7 @@ export interface QueueResidency {
 	dayOfWeek: number;
 	startTime: string | null;
 	lastConfirmed: string | null;
+	attendedAt: string | null;
 }
 
 export interface QueueOccurrence {
@@ -138,8 +139,15 @@ export function callQueue(
 		const who = whoToCall(null, r);
 		if (!r.startTime) {
 			add(r.venueId, 'every-week', `${r.eventName} · no start time · ${DOW[r.dayOfWeek]}`, r.id, who);
-		} else if (!r.lastConfirmed || daysBetween(r.lastConfirmed, weekStart) > SWEEP_DAYS) {
-			const when = r.lastConfirmed ? `last confirmed ${shortDate(r.lastConfirmed)}` : 'never confirmed';
+		} else if (!r.lastConfirmed || daysBetween(r.lastConfirmed, weekStart) > SWEEP_DAYS || (r.attendedAt && r.lastConfirmed <= r.attendedAt)) {
+			// Being there confirms it ran, not that next week is on — only a call does. A night
+			// whose latest confirmation is the visit itself stays on the round until someone calls.
+			const when =
+				r.attendedAt && r.lastConfirmed && r.lastConfirmed <= r.attendedAt
+					? `attended ${shortDate(r.attendedAt)}, not called since`
+					: r.lastConfirmed
+						? `last confirmed ${shortDate(r.lastConfirmed)}`
+						: 'never confirmed';
 			add(r.venueId, 'sweep', `${r.eventName} · ${when}`, r.id, who);
 		}
 	}

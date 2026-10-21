@@ -31,3 +31,13 @@ export function claimFor(source: Source | null, hasTransferringAct: boolean): Cl
 			return hasTransferringAct ? 'TRANSFERRED' : 'FACTUAL';
 	}
 }
+
+/**
+ * The source a write should store. Attendance is never overwritten by hearsay:
+ * a later call or listing confirms the night still runs, it doesn't un-see the
+ * room. How fresh the vouch is, is Rule F5's business (build/vouch.ts).
+ */
+export function sourceAfter(stored: Source | null, reported: Source | null): Source | null {
+	return stored === 'ATTENDED' ? 'ATTENDED' : reported;
+}
+

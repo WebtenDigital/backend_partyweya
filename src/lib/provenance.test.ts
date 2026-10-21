@@ -1,7 +1,7 @@
 // node --test src/lib/provenance.test.ts — no database needed.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { claimFor } from './provenance.ts';
+import { claimFor, sourceAfter } from './provenance.ts';
 
 test('attendance is VETTED, transferring act or not', () => {
 	assert.equal(claimFor('ATTENDED', false), 'VETTED');
@@ -30,4 +30,10 @@ test('a plain source billing a transferring act is TRANSFERRED', () => {
 
 test('a source added later fails safe into FACTUAL', () => {
 	assert.equal(claimFor('SOMETHING_NEW' as never, false), 'FACTUAL');
+});
+
+test('a call never overwrites attendance; otherwise the reported source stands', () => {
+	assert.equal(sourceAfter('ATTENDED', 'MANAGER'), 'ATTENDED');
+	assert.equal(sourceAfter('FLYER', 'MANAGER'), 'MANAGER');
+	assert.equal(sourceAfter(null, 'OWNER'), 'OWNER');
 });

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { vouchExpiry, vouchState } from '#lib/build/vouch.js';
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
 	import NewActsPrompt from '#lib/components/NewActsPrompt.svelte';
 	import {
@@ -273,6 +274,14 @@
 										</p>
 									{/if}
 									<p class="text-dim">{claimLine(r).join(' · ')}</p>
+									{#if r.attendedAt}
+										{@const vs = vouchState(r.attendedAt, data.week)}
+										<p class={vs === 'LIVE' ? 'text-vetted/80' : vs === 'EXPIRING' ? 'text-social' : 'text-energy'}>
+											{vs.toLowerCase()} · {vouchExpiry(r.attendedAt, data.today)}
+										</p>
+									{/if}
+									<!-- Same affordance as calling about it, different verb: logged the morning after. -->
+									<a href="/attend/{r.kind === 'STANDING' ? r.residencyId : r.key}" class="text-chill hover:underline">I was here →</a>
 								</div>
 							</article>
 						{/each}
@@ -298,6 +307,7 @@
 							<div>
 								<p>{c.label}</p>
 								<p class="text-xs text-dim">{c.detail}</p>
+								{#if c.forecast}<p class="font-mono text-[11px] text-vetted/80">{c.forecast}</p>{/if}
 							</div>
 						</li>
 					{/each}

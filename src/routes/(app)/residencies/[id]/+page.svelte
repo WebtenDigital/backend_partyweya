@@ -3,6 +3,7 @@
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
 	import Reminders from '#lib/components/Reminders.svelte';
 	import CallPanel from '#lib/components/CallPanel.svelte';
+	import VouchPanel from '#lib/components/VouchPanel.svelte';
 	import OrganiserPicker from '#lib/components/OrganiserPicker.svelte';
 	import PerksEditor, { toRows, type PerkRow } from '#lib/components/PerksEditor.svelte';
 	import LineupInput from '#lib/components/LineupInput.svelte';
@@ -280,6 +281,7 @@
 					No organiser on this night, so the venue owns the fact. If a promoter runs it, set them under Internal.
 				{/if}
 			</CallPanel>
+			<VouchPanel ref={r.id} attendedAt={r.attendedAt} attendedBy={r.attendedBy} today={data.today} week={data.week} justLogged={data.justLogged} />
 
 			<section class="panel">
 				<h3 class="panel-title mb-2">Why perks matter here</h3>

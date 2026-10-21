@@ -75,6 +75,8 @@ export async function loadWeek(week: string) {
 				claimType: r.claimType,
 				source: r.source,
 				lastConfirmed: kampalaDate(r.lastConfirmed),
+				attendedAt: r.attendedAt ? isoDate(r.attendedAt) : null,
+				attendedBy: r.attendedBy,
 				lineup: r.lineup,
 				perks: r.perks.map(perkIn)
 			})
@@ -95,6 +97,8 @@ export async function loadWeek(week: string) {
 				source: o.source,
 				status: o.status,
 				confirmedOn: kampalaDate(o.confirmedOn),
+				attendedAt: o.attendedAt ? isoDate(o.attendedAt) : null,
+				attendedBy: o.attendedBy,
 				lineup: o.lineup,
 				perks: o.perks.map(perkIn)
 			})

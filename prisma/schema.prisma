@@ -281,6 +281,11 @@ model Residency {
   stoppedAt     DateTime? // when
 
   lastConfirmed DateTime? // drives the monthly sweep
+
+  // When we were last in the room — the night attended, not the day it was logged.
+  // Not lastConfirmed (when we last heard it's on). Rule F5 ages a vouch out from here.
+  attendedAt DateTime? @db.Date
+  attendedBy String? //  initials, like confirmedBy — who stood in the room
   claimType     ClaimType? // what PartyWeya may say about the standing night
   source        Source? //    who confirmed it; only ATTENDED can carry VETTED
   notes         String? // internal — never public
@@ -344,6 +349,11 @@ model Occurrence {
   status      OccurrenceStatus @default(LEAD)
   confirmedOn DateTime?
   confirmedBy String? //  accountability when a published fact turns out wrong
+
+  // When we were last in the room — the night attended, not the day it was logged.
+  // Not lastConfirmed (when we last heard it's on). Rule F5 ages a vouch out from here.
+  attendedAt DateTime? @db.Date
+  attendedBy String? //  initials, like confirmedBy — who stood in the room
 
   publications Publication[]
   perks        Perk[]

@@ -3,6 +3,7 @@ import { prisma } from '#lib/server/prisma.js';
 import { asDate, isWeek, isoDate, kampalaDate, loadWeek } from '#lib/server/register.js';
 import { addDays, kampalaToday, nextMonday } from '#lib/build/week.js';
 import { callQueue } from '#lib/build/calls.js';
+import { vouchRound } from '#lib/build/vouch.js';
 import { unclassified } from '#lib/server/acts.js';
 import { reminderHealth, reminders, subjects } from '#lib/server/reminders.js';
 import type { PageServerLoad } from './$types';
@@ -14,7 +15,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	const weekEnd = addDays(week, 6);
 
 	// Dated rows count from today, so this weekend's gaps are on Thursday's list too.
-	const [{ residencies, gate }, occurrences, venueCount, numbers] = await Promise.all([
+	const [{ residencies, rows, gate }, occurrences, venueCount, numbers] = await Promise.all([
 		loadWeek(week),
 		prisma.occurrence.findMany({
 			where: {
@@ -51,7 +52,8 @@ export const load: PageServerLoad = async ({ url }) => {
 			category: r.category,
 			dayOfWeek: r.dayOfWeek,
 			startTime: r.startTime,
-			lastConfirmed: kampalaDate(r.lastConfirmed)
+			lastConfirmed: kampalaDate(r.lastConfirmed),
+			attendedAt: r.attendedAt ? isoDate(r.attendedAt) : null
 		})),
 		occurrences.map((o) => ({
 			id: o.id,
@@ -76,5 +78,5 @@ export const load: PageServerLoad = async ({ url }) => {
 	const [open, subjectList] = await Promise.all([reminders({}, today), subjects()]);
 	const health = await reminderHealth(open, today);
 
-	return { newActs, week, today, queue, gate, register: { venues: venueCount, numbers }, reminders: open, health, subjects: subjectList };
+	return { newActs, week, today, queue, gate, vouches: vouchRound(rows, week, today), register: { venues: venueCount, numbers }, reminders: open, health, subjects: subjectList };
 };

@@ -5,12 +5,12 @@ import { organiserFrom, organiserOptions } from '#lib/server/organisers.js';
 import { callPanel, whoToCall } from '#lib/build/who.js';
 import { savePerks } from '#lib/server/perks.js';
 import { billingKey, billings, lineupFrom, lineupSuggestions, unclassified } from '#lib/server/acts.js';
-import { asDate, kampalaDate } from '#lib/server/register.js';
-import { kampalaToday } from '#lib/build/week.js';
+import { asDate, isoDate, kampalaDate } from '#lib/server/register.js';
+import { kampalaToday, nextMonday } from '#lib/build/week.js';
 import { reminders } from '#lib/server/reminders.js';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, url }) => {
 	const [r, standing, chill, noted, suggestions, organisers] = await Promise.all([
 		prisma.residency.findUnique({
 			where: { id: params.id },
@@ -36,6 +36,8 @@ export const load: PageServerLoad = async ({ params }) => {
 		organisers,
 		call: callPanel(whoToCall(null, r), venue, r.organiser, r.id),
 		today: kampalaToday(),
+		week: nextMonday(kampalaToday()),
+		justLogged: url.searchParams.get('attended'),
 		reminders: await reminders({ residency: r.id }),
 		residency: {
 			id: r.id,
@@ -60,6 +62,8 @@ export const load: PageServerLoad = async ({ params }) => {
 			stoppedAt: kampalaDate(r.stoppedAt),
 			notes: r.notes,
 			lastConfirmed: kampalaDate(r.lastConfirmed),
+			attendedAt: r.attendedAt ? isoDate(r.attendedAt) : null,
+			attendedBy: r.attendedBy,
 			updatedAt: r.updatedAt.toISOString()
 		},
 		perks: r.perks.map((p) => ({
