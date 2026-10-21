@@ -6,6 +6,8 @@
 	import Reminders from '#lib/components/Reminders.svelte';
 	import OrganiserPicker from '#lib/components/OrganiserPicker.svelte';
 	import { UNKNOWN_LABEL, whoToCall } from '#lib/build/who.js';
+	import { claimFor } from '#lib/provenance.js';
+	import type { Source } from '#lib/server/prisma.js';
 	import { CADENCE, Q6 } from '#lib/build/calls.js';
 	import { shortDate } from '#lib/build/week.js';
 	import type { PageProps } from './$types';
@@ -36,7 +38,6 @@
 	let outcome = $state('');
 	let lineup = $state<string[]>([]);
 	let lineupEl = $state<LineupInput>();
-	let claimType = $state('FACTUAL');
 	// svelte-ignore state_referenced_locally
 	let tier = $state(data.tier);
 	let tierTouched = false;
@@ -71,13 +72,11 @@
 	const venueOnLine = $derived(dial === 'venue' || (dial === 'booking' && ident === 'venue'));
 	// Question 8's picker edits the level being logged: the rule, or this date.
 	const ownOrganiser = $derived(mode === 'standing' ? (residency?.organiserId ?? null) : mode === 'dated' ? (occurrence?.organiserId ?? null) : null);
-	// TRANSFERRED: someone in the lineup whose own act record transfers. The database checks it too.
-	const transferredOk = $derived(
+	// The claim isn't chosen: claimFor() derives it on save from the source and the lineup. Shown here
+	// so it's no surprise. Every source this screen offers derives the same way, so the default stands in.
+	const billsTransferring = $derived(
 		mode !== 'none' && lineup.some((n) => data.suggestions.find((s) => s.name.toLowerCase() === n.toLowerCase())?.transfers === true)
 	);
-	$effect(() => {
-		if (!transferredOk && claimType === 'TRANSFERRED') claimType = 'FACTUAL';
-	});
 	$effect(() => {
 		lineup = mode === 'standing' ? [...(residency?.lineup ?? [])] : [...(occurrence?.lineup ?? [])];
 	});
@@ -117,6 +116,7 @@
 			data.venue.contactRole ?? ''
 		] ?? 'OWNER'
 	);
+	const derivedClaim = $derived(mode === 'none' ? null : claimFor(defaultSource as Source, billsTransferring));
 	const registerFromQ6 = $derived(Q6.find((q) => q.test === q6)?.register ?? data.venue.provisionalRegister ?? '');
 
 	function onKey(e: KeyboardEvent) {
@@ -488,15 +488,15 @@
 			<select name="source" class="input w-auto" value={defaultSource}>
 				{#each SOURCES as s (s.key)}<option value={s.key}>{s.label}</option>{/each}
 			</select>
-			<span class="text-dim">Claim</span>
-			<select name="claimType" class="input w-auto" bind:value={claimType}>
-				<option value="FACTUAL">FACTUAL — it is happening</option>
-				<option value="TRANSFERRED" disabled={!transferredOk}>TRANSFERRED — a known act</option>
-			</select>
+			{#if derivedClaim}
+				<span class="font-mono text-xs text-dim" title="Derived from the source and the lineup — not chosen">
+					→ <span class={derivedClaim === 'TRANSFERRED' ? 'text-vetted' : 'text-fg'}>{derivedClaim}</span>
+				</span>
+			{/if}
 			<p class="hidden max-w-56 text-xs text-dim 2xl:block">
 				{outcome && outcome !== 'reached'
 					? 'Only contact details and the next-call date save without reaching them.'
-					: 'TRANSFERRED unlocks when someone in the lineup transfers on their own record. VETTED is not offered.'}
+					: 'The claim follows the lineup. Doubt an act? Leave them off it.'}
 			</p>
 			<button class="btn-primary ml-auto" disabled={saving}>{saving ? 'Saving…' : 'Save call'}</button>
 		</div>

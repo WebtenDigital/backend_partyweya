@@ -91,7 +91,7 @@
 				{#each CADENCE as c (c.key)}<option value={c.key}>{c.label}</option>{/each}
 			</select>
 			<p class="max-w-64 text-xs text-dim">
-				{outcome && outcome !== 'reached' ? 'Nothing is logged but the next try — tomorrow.' : 'Source ACT · FACTUAL · confirmed. VETTED is not offered.'}
+				{outcome && outcome !== 'reached' ? 'Nothing is logged but the next try — tomorrow.' : 'Source ACT · confirmed · FACTUAL, or TRANSFERRED where they transfer on their own record. Nobody picks it.'}
 			</p>
 			<button class="btn-primary ml-auto" disabled={saving}>{saving ? 'Saving…' : 'Save call'}</button>
 		</div>

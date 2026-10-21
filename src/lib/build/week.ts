@@ -278,14 +278,10 @@ export function gate(weekStart: string, rows: Row[]): Gate {
 	for (const r of pub) registers[r.register!]++;
 	const absent = REGISTERS.filter((r) => registers[r] === 0);
 
-	const vetted = pub
-		.filter(
-			(r) =>
-				r.claimType === 'VETTED' &&
-				r.checkedOn != null &&
-				daysBetween(r.checkedOn, weekStart) <= F5_WINDOW_DAYS
-		)
-		.sort((a, b) => b.checkedOn!.localeCompare(a.checkedOn!));
+	const inWindow = (r: Row) => r.checkedOn != null && daysBetween(r.checkedOn, weekStart) <= F5_WINDOW_DAYS;
+	const vetted = pub.filter((r) => r.claimType === 'VETTED' && inWindow(r)).sort((a, b) => b.checkedOn!.localeCompare(a.checkedOn!));
+	// Attendance that never became VETTED is a broken write, not a missing night out — say which.
+	const unpromoted = pub.filter((r) => r.source === 'ATTENDED' && r.claimType !== 'VETTED' && inWindow(r));
 
 	const timed = pub.filter((r) => r.startTime).length;
 	const checks: Check[] = [
@@ -308,7 +304,9 @@ export function gate(weekStart: string, rows: Row[]): Gate {
 			pass: vetted.length > 0,
 			detail: vetted.length
 				? `${vetted.length} vetted, newest ${shortDate(vetted[0].checkedOn!)} — inside Rule F5’s window`
-				: 'No attendance inside Rule F5’s window — the set is a listing, not curation'
+				: unpromoted.length
+					? `${unpromoted.map((r) => `${r.eventName} · ${r.venue.name}`).join('; ')}: attended inside the window, but the claim did not promote to VETTED (it reads ${unpromoted[0].claimType ?? 'no claim'}). That's a write bug, not a missing night out.`
+					: 'No attendance inside Rule F5’s window — the set is a listing, not curation'
 		},
 		{
 			label: 'Nothing padded to hit a number',

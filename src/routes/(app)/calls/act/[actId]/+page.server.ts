@@ -4,6 +4,8 @@ import { prisma, type Category } from '#lib/server/prisma.js';
 import { asDate, kampalaDate } from '#lib/server/register.js';
 import { CADENCE } from '#lib/build/calls.js';
 import { Invalid, failureMessage, slug, text } from '#lib/server/forms.js';
+import { claimFor } from '#lib/provenance.js';
+import { lineupTransfers } from '#lib/server/provenance.js';
 import { kampalaToday, nextMonday } from '#lib/build/week.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -34,7 +36,8 @@ export const load: PageServerLoad = async ({ params }) => {
 
 export const actions: Actions = {
 	// A prospective call: the act names gigs they're booked for. Each one is a
-	// fact from the performer — source ACT, FACTUAL, CONFIRMED — even without a
+	// fact from the performer — source ACT, CONFIRMED, its claim derived (an act
+	// that transfers makes it TRANSFERRED: the bill is the credibility) — even without a
 	// start time, which the call round then chases ("blocks this week").
 	save: async ({ params, request }) => {
 		const f = await request.formData();
@@ -98,7 +101,7 @@ export const actions: Actions = {
 							category: (act.role && CATEGORY[act.role]) || 'OTHER',
 							lineup,
 							source: 'ACT',
-							claimType: 'FACTUAL',
+							claimType: claimFor('ACT', await lineupTransfers(lineup, tx)),
 							status: 'CONFIRMED',
 							confirmedOn: now,
 							confirmedBy: CALLER_NAME

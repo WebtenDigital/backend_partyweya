@@ -16,6 +16,8 @@ import { Invalid, failureMessage, money, oneOf, phone, slug, text, time } from '
 import { kampalaToday, nextMonday } from '#lib/build/week.js';
 import { reminders } from '#lib/server/reminders.js';
 import { organiserFrom, organiserOptions } from '#lib/server/organisers.js';
+import { claimFor } from '#lib/provenance.js';
+import { lineupTransfers } from '#lib/server/provenance.js';
 import { whoToCall, type NightContact, type Who } from '#lib/build/who.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -150,9 +152,7 @@ export const actions: Actions = {
 			const reached = outcome === 'reached';
 			const mode = text(f, 'mode') ?? 'none';
 
-			const claimType = text(f, 'claimType') ?? 'FACTUAL';
-			if (claimType === 'VETTED') throw new Invalid('VETTED needs attendance; a call cannot carry it.');
-			if (!['FACTUAL', 'TRANSFERRED'].includes(claimType)) throw new Invalid(`Unknown claim: ${claimType}`);
+			// The claim is derived from the source and the lineup (claimFor); a posted claimType is ignored.
 			const source = oneOf(Source, text(f, 'source'), 'source') ?? 'OWNER';
 			if (source === 'ATTENDED') throw new Invalid('A call is not attendance.');
 
@@ -201,7 +201,6 @@ export const actions: Actions = {
 			const comingUp = text(f, 'comingUp');
 			const newPhone = f.has('phone') ? phone(f, 'phone') : venue.phone;
 			const phoneChanged = newPhone !== venue.phone;
-			const confirmed = { claimType: claimType as 'FACTUAL' | 'TRANSFERRED', source };
 
 			await prisma.$transaction(async (tx) => {
 				// Identification first: it decides who the rest of the call was with.
@@ -267,9 +266,15 @@ export const actions: Actions = {
 				const q8 = await organiserFrom(tx, f, 'q8');
 				const routed = q8 !== undefined ? { organiserId: q8 } : {};
 
+				// What the row will bill decides TRANSFERRED: doubt an act, leave them off the lineup.
+				const provenance = async (billed: string[]) => ({ source, claimType: claimFor(source, await lineupTransfers(billed, tx)) });
+
 				if (mode === 'standing') {
 					const id = text(f, 'residencyId');
 					if (!id) throw new Invalid('Pick the standing night you fixed.');
+					const rule = await tx.residency.findFirst({ where: { id, venueId: venue.id }, select: { lineup: true } });
+					if (!rule) throw new Invalid('That standing night isn’t at this venue.');
+					const sLineup = lineupFrom(f, 's_lineup');
 					await tx.residency.update({
 						where: { id, venueId: venue.id },
 						data: {
@@ -277,18 +282,23 @@ export const actions: Actions = {
 							...(text(f, 's_start') && { startTime: time(f, 's_start', 'Start') }),
 							...(text(f, 's_end') && { endTime: time(f, 's_end', 'Wrap') }),
 							...(text(f, 's_gate') && { priceGate: money(f, 's_gate', 'Gate price') }),
-							...(lineupFrom(f, 's_lineup')?.length && { lineup: lineupFrom(f, 's_lineup') }),
+							...(sLineup?.length && { lineup: sLineup }),
 							lastConfirmed: now,
 							...routed,
-							...confirmed
+							...(await provenance(sLineup?.length ? sLineup : rule.lineup))
 						}
 					});
 					await savePerks(tx, { residencyId: id }, f);
 				}
 
 				if (mode === 'dated') {
-					// TRANSFERRED is checked against the acts in the lineup by the database itself.
 					const lineup = lineupFrom(f, 'd_lineup') ?? [];
+					const existing = text(f, 'occurrenceId');
+					// An empty lineup shows the standing night's, so the claim is judged on that.
+					const standing =
+						!lineup.length && existing && existing !== 'new'
+							? (await tx.occurrence.findFirst({ where: { id: existing, venueId: venue.id }, select: { residency: { select: { lineup: true } } } }))?.residency
+							: null;
 					const date = text(f, 'd_date');
 					const eventName = text(f, 'd_name');
 					if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Invalid('A dated night needs its date.');
@@ -308,9 +318,8 @@ export const actions: Actions = {
 						confirmedOn: now,
 						confirmedBy: CALLER_NAME,
 						...routed,
-						...confirmed
+						...(await provenance(lineup.length ? lineup : (standing?.lineup ?? [])))
 					};
-					const existing = text(f, 'occurrenceId');
 					if (existing && existing !== 'new') {
 						await tx.occurrence.update({ where: { id: existing, venueId: venue.id }, data: fields });
 						await savePerks(tx, { occurrenceId: existing }, f);

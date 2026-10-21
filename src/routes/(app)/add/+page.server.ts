@@ -5,6 +5,9 @@ import { addPerks } from '#lib/server/perks.js';
 import { lineupFrom, lineupSuggestions, newActsParam, unclassified } from '#lib/server/acts.js';
 import { Invalid, failureMessage, money, oneOf, phone, slug, text, time } from '#lib/server/forms.js';
 import { organiserFrom, organiserOptions } from '#lib/server/organisers.js';
+import { claimFor } from '#lib/provenance.js';
+import { lineupTransfers } from '#lib/server/provenance.js';
+import type { Source } from '#lib/server/prisma.js';
 import { asDate, kampalaDate } from '#lib/server/register.js';
 import { PROVENANCE, REPEATS, isoDay, mondayOf, nextOn, type Repeat } from '#lib/build/add.js';
 import { kampalaToday } from '#lib/build/week.js';
@@ -76,9 +79,8 @@ export const actions: Actions = {
 			if (!prov) throw new Invalid('Say where this came from — there is no default.');
 			const source = text(f, 'source') ?? prov.sources[0].key;
 			if (!prov.sources.some((s) => s.key === source)) throw new Invalid('That source doesn’t match the answer.');
-			// The source decides the claim. No form can produce VETTED.
+			// The source decides the claim, through claimFor(). No form can set it.
 			if (f.has('vetted') || f.has('claimType')) throw new Invalid('The claim comes from the source; it can’t be set here.');
-			const claimType = prov.claim;
 			const confirmed = prov.confirms;
 
 			const repeat = REPEATS.find((r) => r.key === text(f, 'repeat'))?.key as Repeat | undefined;
@@ -104,10 +106,11 @@ export const actions: Actions = {
 					await tx.venue.update({ where: { id: venueId }, data: { lastAttended: now } });
 				}
 
-				const confirmation = {
-					claimType,
-					source: source as never
-				};
+				// Derived from the source and the lineup the row will actually bill, in this transaction.
+				const provenance = async (billed: string[]) => ({
+					source: source as Source,
+					claimType: claimFor(source as Source, await lineupTransfers(billed, tx))
+				});
 				const startTime = time(f, 'start', 'Start');
 				const endTime = time(f, 'end', 'Wrap');
 				const priceGate = money(f, 'gate', 'Gate price');
@@ -148,8 +151,7 @@ export const actions: Actions = {
 						...(lineup.length && { lineup }),
 						...(running && { runningSince: asDate(`${running}-01`) }),
 						lastConfirmed: confirmed ? now : null,
-						...routing,
-						...confirmation
+						...routing
 					};
 					const existing =
 						f.get('duplicate') !== 'separate'
@@ -157,6 +159,8 @@ export const actions: Actions = {
 									where: { venueId, active: true, eventName: { equals: eventName, mode: 'insensitive' } }
 								})
 							: null;
+					// A merge with no act given keeps the night's existing one — and is judged on it.
+					Object.assign(data, await provenance(lineup.length ? lineup : (existing?.lineup ?? [])));
 					let id: string;
 					if (existing) {
 						id = existing.id;
@@ -203,17 +207,19 @@ export const actions: Actions = {
 								...routing,
 								status: confirmed ? ('CONFIRMED' as const) : ('LEAD' as const)
 							};
+				const existing = await tx.occurrence.findUnique({
+					where: { venueId_date_eventName: { venueId, date: asDate(date), eventName } }
+				});
+				// An empty lineup shows the standing night's, so that's what the claim is judged on —
+				// as the database's TRANSFERRED check judges it.
+				const billed = lineup.length ? lineup : existing?.lineup.length ? existing.lineup : (residency?.lineup ?? []);
 				const fields = {
 					...data,
-					...confirmation,
+					...(await provenance(billed)),
 					residencyId: residency?.id ?? null,
 					confirmedOn: confirmed ? now : null,
 					confirmedBy: confirmed ? CALLER_NAME : null
 				};
-
-				const existing = await tx.occurrence.findUnique({
-					where: { venueId_date_eventName: { venueId, date: asDate(date), eventName } }
-				});
 				let id: string;
 				if (existing) {
 					id = existing.id;

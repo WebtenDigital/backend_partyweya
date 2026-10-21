@@ -21,22 +21,21 @@ export const PROVENANCE: {
 	label: string;
 	effect: string;
 	confirms: boolean; // confirmed (publishable once timed) vs stays a LEAD
-	claim: 'FACTUAL' | null;
 	sources: { key: string; label: string }[]; // the Source enum values this can mean
 }[] = [
-	{ key: 'venue', label: 'The venue told me', effect: 'FACTUAL · confirmed', confirms: true, claim: 'FACTUAL',
+	{ key: 'venue', label: 'The venue told me', effect: 'FACTUAL · confirmed', confirms: true,
 		sources: [{ key: 'OWNER', label: 'the owner' }, { key: 'MANAGER', label: 'a manager' }] },
-	{ key: 'promoter', label: 'A promoter or agent told me', effect: 'FACTUAL · confirmed', confirms: true, claim: 'FACTUAL',
+	{ key: 'promoter', label: 'A promoter or agent told me', effect: 'FACTUAL · confirmed', confirms: true,
 		sources: [{ key: 'PROMOTER', label: 'the promoter' }, { key: 'AGENT', label: 'an agent' }] },
 	// The performer, about their own booking: a principal, so confirmed — though they
 	// rarely know the door time, so it often lands as "blocks this week" for a venue call.
-	{ key: 'act', label: 'The act told me', effect: 'FACTUAL · confirmed · time often unknown', confirms: true, claim: 'FACTUAL',
+	{ key: 'act', label: 'The act told me', effect: 'FACTUAL · confirmed · time often unknown', confirms: true,
 		sources: [{ key: 'ACT', label: 'the act themselves' }] },
-	{ key: 'listing', label: 'I saw a listing or a flyer', effect: 'FACTUAL · stays a LEAD', confirms: false, claim: 'FACTUAL',
+	{ key: 'listing', label: 'I saw a listing or a flyer', effect: 'FACTUAL · stays a LEAD', confirms: false,
 		sources: [{ key: 'TICKETING', label: 'a ticketing listing' }, { key: 'SOCIAL_MEDIA', label: 'their social post' }, { key: 'FLYER', label: 'a flyer or poster' }, { key: 'PRESS', label: 'the press' }] },
-	{ key: 'suggested', label: 'Someone suggested it', effect: 'no claim · needs a call', confirms: false, claim: null,
+	{ key: 'suggested', label: 'Someone suggested it', effect: 'no claim · needs a call', confirms: false,
 		sources: [{ key: 'AUDIENCE', label: 'a reader' }] },
-	{ key: 'attended', label: 'I was there', effect: 'FACTUAL · confirmed · logs attendance', confirms: true, claim: 'FACTUAL',
+	{ key: 'attended', label: 'I was there', effect: 'VETTED · confirmed · logs attendance', confirms: true,
 		sources: [{ key: 'ATTENDED', label: 'attendance' }] }
 ];
 

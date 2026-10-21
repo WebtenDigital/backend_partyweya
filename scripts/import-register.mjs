@@ -13,6 +13,7 @@ import 'dotenv/config';
 import fs from 'node:fs';
 import path from 'node:path';
 import pg from 'pg';
+import { claimFor } from '../src/lib/provenance.ts';
 
 const dir = process.argv[2] ?? 'data';
 
@@ -131,7 +132,7 @@ const residencies = load('2_residency.csv').map((r) => ({
 	// Confirmation fields only when the sheet carries them, so a re-import
 	// from an older export doesn't wipe confirmations recorded in the app.
 	...('lastConfirmed' in r && { lastConfirmed: r.lastConfirmed }),
-	...('claimType' in r && { claimType: r.claimType }),
+	// No claimType: the sheet's is ignored and the claim derived below, as on every write.
 	...('source' in r && { source: source(r.source, `Residency ${r.id}`) })
 }));
 
@@ -150,7 +151,6 @@ const occurrences = load('3_occurrence.csv').map((o) => ({
 	priceNote: o.priceNote,
 	lineup: names(o.lineup),
 	register: o.register,
-	claimType: o.claimType,
 	source: source(o.source, `Occurrence ${o.id}`),
 	status: o.status ?? 'LEAD',
 	confirmedOn: o.confirmedOn,
@@ -204,6 +204,31 @@ async function upsert(client, table, key, rows) {
 	console.log(`${table}: ${rows.length}`);
 }
 
+// The claim is never imported. claimFor() derives it from the stored source and
+// the lineup the row bills — an empty dated lineup shows its standing night's —
+// resolved by act_for(), the resolver the TRANSFERRED trigger uses.
+async function deriveClaims(client, residencyIds, occurrenceIds) {
+	const { rows } = await client.query(
+		`select 'Residency' t, r."id", r."source", r."claimType",
+		        exists (select 1 from unnest(r."lineup") n where (act_for(n))."transfers") transfers
+		   from "Residency" r where r."id" = any($1)
+		 union all
+		 select 'Occurrence', o."id", o."source", o."claimType",
+		        exists (select 1 from unnest(case when cardinality(o."lineup") > 0 then o."lineup" else coalesce(s."lineup", '{}') end) n
+		                 where (act_for(n))."transfers")
+		   from "Occurrence" o left join "Residency" s on s."id" = o."residencyId" where o."id" = any($2)`,
+		[residencyIds, occurrenceIds]
+	);
+	let changed = 0;
+	for (const r of rows) {
+		const claim = claimFor(r.source, r.transfers);
+		if (claim === r.claimType) continue;
+		await client.query(`update "${r.t}" set "claimType" = $1::"ClaimType" where "id" = $2`, [claim, r.id]);
+		changed++;
+	}
+	console.log(`Claims derived: ${rows.length} rows, ${changed} changed`);
+}
+
 const client = new pg.Client({ connectionString: process.env.DIRECT_URL });
 await client.connect();
 try {
@@ -213,6 +238,7 @@ try {
 	await upsert(client, 'Venue', 'id', venues);
 	await upsert(client, 'Residency', 'id', residencies);
 	await upsert(client, 'Occurrence', 'id', occurrences);
+	await deriveClaims(client, residencies.map((r) => r.id), occurrences.map((o) => o.id));
 	await client.query('commit');
 } catch (e) {
 	await client.query('rollback');

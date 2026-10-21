@@ -6,6 +6,8 @@
 	import { dayHeading, shillings } from '#lib/build/week.js';
 	import PerksEditor, { type PerkRow } from '#lib/components/PerksEditor.svelte';
 	import LineupInput from '#lib/components/LineupInput.svelte';
+	import { claimFor } from '#lib/provenance.js';
+	import type { Source } from '#lib/server/prisma.js';
 	import OrganiserPicker from '#lib/components/OrganiserPicker.svelte';
 	import type { PageProps } from './$types';
 
@@ -108,7 +110,13 @@
 		if (!start || !register) return { text: `needs ${!start ? 'a time' : 'a register'}`, tone: 'text-social' };
 		return { text: 'publishable', tone: 'text-vetted' };
 	});
-	const claim = $derived(prov?.claim ?? null);
+	// The same claimFor() the save runs; the server re-derives it from the act records on save.
+	const billsTransferring = $derived(
+		(lineup.length ? lineup : (replaces?.lineup ?? [])).some(
+			(n) => data.suggestions.find((x) => x.name.toLowerCase() === n.trim().toLowerCase())?.transfers === true
+		)
+	);
+	const claim = $derived(prov ? claimFor(source as Source, billsTransferring) : null);
 
 	const preview = $derived.by((): { op: string; rows: [string, string, string?][] } => {
 		const v = venueId || (newName ? slug(newName) : '—');
@@ -485,8 +493,9 @@
 			<section class="panel">
 				<h3 class="panel-title mb-2">Not offered here</h3>
 				<p class="text-xs text-fg/80">
-					<span class="text-vetted">VETTED</span> isn’t offered by any form. “I was there” records the attendance; the claim
-					that PartyWeya judged the room isn’t something typed into a field.
+					<span class="text-vetted">VETTED</span> isn’t offered by any form. The claim follows the source: “I was there”
+					records the attendance and that makes it VETTED; a billed act whose own record transfers makes it TRANSFERRED.
+					Nobody picks either.
 				</p>
 			</section>
 		</aside>
