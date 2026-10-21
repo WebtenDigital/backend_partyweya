@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
 	import Reminders from '#lib/components/Reminders.svelte';
+	import CallPanel from '#lib/components/CallPanel.svelte';
 	import PerksEditor, { toRows, type PerkRow } from '#lib/components/PerksEditor.svelte';
 	import LineupInput from '#lib/components/LineupInput.svelte';
 	import NewActsPrompt from '#lib/components/NewActsPrompt.svelte';
@@ -73,11 +74,6 @@
 			formEl.requestSubmit();
 		}
 	}
-	const call = $derived(
-		r.organiser
-			? { who: 'ORGANISER', name: r.organiser.contactName ?? r.organiser.name, phone: r.organiser.phone }
-			: { who: 'VENUE', name: r.venue.name, phone: r.venue.phone }
-	);
 	const many = (n: number) => (n === 1 ? 'one' : (WORDS[n] ?? String(n)));
 </script>
 
@@ -265,25 +261,23 @@
 				</p>
 			</section>
 
-			<section class="panel">
-				<h3 class="panel-title mb-3">Who to call about this</h3>
-				<div class="flex items-start justify-between rounded-md border border-line bg-ink/40 p-3">
-					<div>
-						<p class="text-sm">{call.name}</p>
-						<p class="font-mono text-xs {call.phone ? 'text-fg' : 'text-social'}">{call.phone ?? 'no number on file'}</p>
-					</div>
-					<span class="font-mono text-[10px] tracking-wider text-dim">{call.who}</span>
-				</div>
-				<p class="mt-3 text-xs text-dim">
-					{#if r.organiser}
-						{r.organiser.name} runs this night, so they own the fact — not {r.venue.name}. A manager’s “I think so?” is worse
-						than no answer, because it gets recorded as one.
-					{:else}
-						No organiser on this night, so the venue owns the fact. Where a promoter runs the night, the queue routes there
-						instead — a manager’s “I think so?” is worse than no answer, because it gets recorded as one.
-					{/if}
-				</p>
-			</section>
+			<CallPanel
+				kind={r.organiser ? 'organiser' : 'venue'}
+				id={r.organiser?.id ?? r.venue.id}
+				who={r.organiser ? 'ORGANISER' : 'VENUE'}
+				name={r.organiser ? `${r.organiser.contactName ?? r.organiser.name}${r.organiser.contactName ? ` · ${r.organiser.name}` : ''}` : r.venue.name}
+				phone={r.organiser ? r.organiser.phone : r.venue.phone}
+				whatsapp={r.organiser ? r.organiser.whatsapp : r.venue.whatsapp}
+				href="/calls/{r.venue.id}?ref={r.id}"
+			>
+				{#if r.organiser}
+					{r.organiser.name} runs this night, so they own the fact — not {r.venue.name}. The promoter owns the night; the venue
+					owns the room.
+				{:else}
+					No organiser on this night, so the venue owns the fact. A manager’s “I think so?” is worse than no answer, because
+					it gets recorded as one.
+				{/if}
+			</CallPanel>
 
 			<section class="panel">
 				<h3 class="panel-title mb-2">Why perks matter here</h3>

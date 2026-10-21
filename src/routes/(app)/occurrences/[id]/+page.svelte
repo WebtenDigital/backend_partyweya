@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
 	import Reminders from '#lib/components/Reminders.svelte';
+	import CallPanel from '#lib/components/CallPanel.svelte';
 	import PerksEditor from '#lib/components/PerksEditor.svelte';
 	import LineupInput from '#lib/components/LineupInput.svelte';
 	import NewActsPrompt from '#lib/components/NewActsPrompt.svelte';
@@ -47,7 +48,6 @@
 		</div>
 		<nav class="flex flex-wrap gap-2 text-sm">
 			{#if o.residency}<a href="/residencies/{o.residency.id}" class="btn">The standing night</a>{/if}
-			<a href="/calls/{o.venue.id}?occurrence={o.id}" class="btn">Log a call about it</a>
 		</nav>
 	</header>
 
@@ -115,6 +115,22 @@
 				</p>
 				<p class="mt-3 text-xs text-dim">Editing here doesn’t confirm anything — only a logged call does.</p>
 			</section>
+			<CallPanel
+				kind={o.organiser ? 'organiser' : 'venue'}
+				id={o.organiser?.id ?? o.venue.id}
+				who={o.organiser ? 'ORGANISER' : 'VENUE'}
+				name={o.organiser ? `${o.organiser.contactName ?? o.organiser.name}${o.organiser.contactName ? ` · ${o.organiser.name}` : ''}` : o.venue.name}
+				phone={o.organiser ? o.organiser.phone : o.venue.phone}
+				whatsapp={o.organiser ? o.organiser.whatsapp : o.venue.whatsapp}
+				href="/calls/{o.venue.id}?ref={o.id}"
+			>
+				{#if o.organiser}
+					{o.organiser.name} runs this night, so the call goes to them, not {o.venue.name}. The promoter owns the night; the
+					venue owns the room.
+				{:else if o.status === 'CONFIRMED' && !o.startTime}
+					Confirmed, but no start time — the one field stopping it publishing.
+				{/if}
+			</CallPanel>
 		</aside>
 	</div>
 

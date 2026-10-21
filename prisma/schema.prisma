@@ -219,7 +219,12 @@ model Organiser {
   contactName String?
   role        ContactRole?
   phone       String?
+  phoneVerifiedAt DateTime? // set on a call that reaches them; cleared when the number changes
   whatsapp    Boolean      @default(false)
+
+  // A promoter's night is called about with the promoter, so the cadence lives here, not on the venue.
+  lastContacted  DateTime?
+  nextContactDue DateTime?
 
   paidClient Boolean @default(false)
   notes      String?
@@ -415,6 +420,7 @@ model Act {
   bestTimeToReach String?
   phoneVerifiedAt DateTime? // set on a call that reaches them; cleared when the number changes
   lastContacted   DateTime?
+  nextContactDue  DateTime?
   paidClient      Boolean   @default(false)
   reminders       Reminder[]
   createdAt       DateTime  @default(now())

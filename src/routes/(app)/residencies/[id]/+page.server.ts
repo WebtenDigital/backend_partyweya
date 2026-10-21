@@ -14,7 +14,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			where: { id: params.id },
 			include: {
 				venue: { select: { id: true, name: true, phone: true, whatsapp: true, zone: { select: { name: true, division: true } } } },
-				organiser: { select: { name: true, contactName: true, phone: true, whatsapp: true } },
+				organiser: { select: { id: true, name: true, contactName: true, phone: true, whatsapp: true } },
 				perks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }
 			}
 		}),

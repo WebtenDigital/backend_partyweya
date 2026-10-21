@@ -35,6 +35,13 @@
 	let lineup = $state<string[]>([]);
 	let lineupEl = $state<LineupInput>();
 	let claimType = $state('FACTUAL');
+	// svelte-ignore state_referenced_locally
+	let tier = $state(data.tier);
+	let tierTouched = false;
+	function pick(m: typeof mode) {
+		mode = m;
+		if (!tierTouched) tier = m === 'dated' ? 'C' : 'A';
+	}
 	let saving = $state(false);
 	let formEl: HTMLFormElement;
 
@@ -53,11 +60,38 @@
 		lineup = mode === 'standing' ? [...(residency?.lineup ?? [])] : [...(occurrence?.lineup ?? [])];
 	});
 
+	// Why the cadence is what it is, beside the selector.
+	const monthsRunning = $derived(
+		residency?.runningSince
+			? (Number(data.today.slice(0, 4)) - Number(residency.runningSince.slice(0, 4))) * 12 +
+					Number(data.today.slice(5, 7)) - Number(residency.runningSince.slice(5, 7))
+			: null
+	);
+	const tierReason = $derived(
+		mode === 'dated'
+			? 'Tier C: a dated night is this week’s problem — weekly until it’s on.'
+			: mode === 'standing'
+				? monthsRunning == null
+					? 'Tier A: strictly, held 3+ months — running-since isn’t known for this night, so ask how long it’s been on.'
+					: monthsRunning >= 3
+						? `Tier A: held ${monthsRunning} months, since ${residency!.runningSince!.slice(0, 7)}.`
+						: `Strictly not Tier A yet — running ${monthsRunning === 0 ? 'under a month' : `${monthsRunning} month${monthsRunning === 1 ? '' : 's'}`}, not 3+.`
+				: ''
+	);
+	// A confirmed row that still can't publish: say exactly what's missing.
+	const stillBlocked = $derived(
+		mode === 'dated' && occurrence?.status === 'CONFIRMED'
+			? [!occurrence.startTime && 'start time', occurrence.priceGate == null && 'gate price', !occurrence.register && 'register'].filter(
+					(x): x is string => !!x
+				)
+			: []
+	);
+
 	const sameRegister = $derived(
 		data.residencies.length > 1 && new Set(data.residencies.map((r) => r.register)).size === 1
 	);
 	const defaultSource = $derived(
-		({ OWNER: 'OWNER', PROMOTER: 'PROMOTER', MANAGER: 'MANAGER', MARKETING: 'MANAGER', HOST: 'MANAGER' } as Record<string, string>)[
+		organiser ? 'PROMOTER' : ({ OWNER: 'OWNER', PROMOTER: 'PROMOTER', MANAGER: 'MANAGER', MARKETING: 'MANAGER', HOST: 'MANAGER' } as Record<string, string>)[
 			data.venue.contactRole ?? ''
 		] ?? 'OWNER'
 	);
@@ -133,7 +167,7 @@
 						<button
 							type="button"
 							class="rounded-md border px-3 py-2 {mode === key ? 'border-chill bg-chill/10' : 'border-line hover:border-dim'}"
-							onclick={() => (mode = key as typeof mode)}
+							onclick={() => pick(key as typeof mode)}
 						>
 							{text}
 						</button>
@@ -179,6 +213,16 @@
 							{/each}
 						</select>
 					</label>
+					{#if stillBlocked.length}
+						<p class="rounded-md border border-social/50 bg-social/10 px-3 py-2 text-sm">
+							<span class="mr-1 text-social">!</span>
+							{#if stillBlocked.length === 1 && stillBlocked[0] === 'start time'}
+								Already confirmed. <strong>The start time is the single field stopping it publishing</strong> — ask “what time does it start?”
+							{:else}
+								Already confirmed, but it can’t publish without: <strong>{stillBlocked.join(', ')}</strong>.
+							{/if}
+						</p>
+					{/if}
 					{#key occurrenceId}
 						<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
 							<label class="field"><span>Date</span><input name="d_date" type="date" class="input" value={occurrence?.date ?? ''} min={data.today} /></label>
@@ -213,6 +257,12 @@
 				{/if}
 			</section>
 
+			{#if organiser}
+				<p class="panel text-xs text-dim">
+					<span class="mr-2 font-mono text-dim">6</span>Question 6 is about the room, so it’s asked of {data.venue.name}, not the
+					organiser. This call won’t record an answer to it — or move {data.venue.name}’s next-call date.
+				</p>
+			{:else}
 			<section class="panel space-y-3 border-chill/40 bg-chill/5">
 				<h2 class="font-semibold"><span class="mr-2 font-mono text-xs text-dim">6</span>The one that earns its place</h2>
 				<p>“If I came through with friends and we wanted to actually talk — could we? Or is it full-volume?”</p>
@@ -243,6 +293,7 @@
 					</p>
 				{/if}
 			</section>
+			{/if}
 
 			<section class="panel space-y-4">
 				<h2 class="font-semibold"><span class="mr-2 font-mono text-xs text-dim">7–8</span>What’s coming, and who to ask next time</h2>
@@ -359,9 +410,10 @@
 					<input type="radio" name="outcome" value={key} bind:group={outcome} class="sr-only" required />{text}
 				</label>
 			{/each}
-			<select name="cadence" class="input w-auto">
+			<select name="cadence" class="input w-auto" bind:value={tier} onchange={() => (tierTouched = true)}>
 				{#each CADENCE as c (c.key)}<option value={c.key}>{c.label}</option>{/each}
 			</select>
+			{#if tierReason}<p class="max-w-52 text-[11px] leading-tight text-dim">{tierReason}</p>{/if}
 			<span class="text-dim">Spoke to</span>
 			<select name="source" class="input w-auto" value={defaultSource}>
 				{#each SOURCES as s (s.key)}<option value={s.key}>{s.label}</option>{/each}

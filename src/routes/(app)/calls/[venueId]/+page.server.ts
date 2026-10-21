@@ -34,19 +34,23 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			residencies: {
 				where: { active: true },
 				orderBy: { dayOfWeek: 'asc' },
-				include: { organiser: { select: { name: true, contactName: true, phone: true, whatsapp: true } }, perks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] } }
+				include: { organiser: { select: { id: true, name: true, contactName: true, phone: true, whatsapp: true } }, perks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] } }
 			},
 			occurrences: {
 				where: { date: { gte: asDate(today) }, status: { not: 'CANCELLED' } },
 				orderBy: { date: 'asc' },
-				include: { organiser: { select: { name: true, contactName: true, phone: true, whatsapp: true } }, perks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] } }
+				include: { organiser: { select: { id: true, name: true, contactName: true, phone: true, whatsapp: true } }, perks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] } }
 			}
 		}
 	});
 	if (!venue) error(404, 'No such venue');
 
-	const residencyId = url.searchParams.get('residency');
-	const occurrenceId = url.searchParams.get('occurrence');
+	// ?ref= is any record's id — a standing night or a dated one here. The older
+	// ?residency= / ?occurrence= the queue writes still work.
+	const ref = url.searchParams.get('ref');
+	const residencyId = url.searchParams.get('residency') ?? (ref && venue.residencies.some((r) => r.id === ref) ? ref : null);
+	const occurrenceId = url.searchParams.get('occurrence') ?? (ref && venue.occurrences.some((o) => o.id === ref) ? ref : null);
+	const tier = url.searchParams.get('tier');
 	const week = url.searchParams.get('week');
 
 	return {
@@ -81,6 +85,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			priceGate: r.priceGate,
 			register: r.register,
 			lastConfirmed: kampalaDate(r.lastConfirmed),
+			runningSince: kampalaDate(r.runningSince),
 			lineup: r.lineup,
 			organiser: r.organiser,
 			perks: r.perks.map(editablePerk)
@@ -105,6 +110,8 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		mode: occurrenceId ? 'dated' : residencyId ? 'standing' : 'none',
 		residencyId: residencyId ?? venue.residencies.find((r) => !r.startTime)?.id ?? venue.residencies[0]?.id ?? null,
 		occurrenceId: occurrenceId ?? 'new',
+		// A standing night is a monthly sweep; a dated night is this week's problem.
+		tier: CADENCE.some((c) => c.key === tier) ? tier : occurrenceId ? 'C' : 'A',
 		// Open reminders for this venue and its nights — in the sidebar while you're on the phone.
 		reminders: await reminders({ venue: venue.id }, today)
 	};
@@ -143,6 +150,17 @@ export const actions: Actions = {
 			});
 			if (!venue) throw new Invalid('No such venue');
 
+			// A promoter's night is a call to the promoter: the cadence and the
+			// verification are theirs, and the venue's are left alone.
+			const nightId = mode === 'standing' ? text(f, 'residencyId') : mode === 'dated' ? text(f, 'occurrenceId') : null;
+			const night =
+				mode === 'standing' && nightId
+					? await prisma.residency.findUnique({ where: { id: nightId }, select: { organiser: { select: { id: true, phone: true } } } })
+					: mode === 'dated' && nightId && nightId !== 'new'
+						? await prisma.occurrence.findUnique({ where: { id: nightId }, select: { organiser: { select: { id: true, phone: true } } } })
+						: null;
+			const organiser = night?.organiser ?? null;
+
 			const comingUp = text(f, 'comingUp');
 			const newPhone = f.has('phone') ? phone(f, 'phone') : venue.phone;
 			const phoneChanged = newPhone !== venue.phone;
@@ -159,21 +177,32 @@ export const actions: Actions = {
 						...(f.has('phone') && { phone: newPhone }),
 						// Reached on the number on file: it's verified. A number changed during the
 						// call hasn't been answered yet, so it starts unverified.
-						...(phoneChanged ? { phoneVerifiedAt: null } : reached && venue.phone ? { phoneVerifiedAt: now } : {}),
+						...(phoneChanged ? { phoneVerifiedAt: null } : reached && venue.phone && !organiser ? { phoneVerifiedAt: now } : {}),
 						...(f.has('phone') && { whatsapp: f.get('whatsapp') === 'on' }),
 						...(f.has('bestTime') && { bestTimeToReach: text(f, 'bestTime') }),
-						nextContactDue: nextCall,
-						...(reached && { lastContacted: now }),
-						...(reached && test && { conversationTest: test, provisionalRegister: register }),
+						...(!organiser && { nextContactDue: nextCall }),
+						...(reached && !organiser && { lastContacted: now }),
+						// Question 6 is about the room, so only the venue's answer counts.
+						...(reached && !organiser && test && { conversationTest: test, provisionalRegister: register }),
 						...(reached && comingUp && {
 							notes: [venue.notes, `${today} coming up: ${comingUp}`].filter(Boolean).join('\n')
 						})
 					}
 				});
+				if (organiser) {
+					await tx.organiser.update({
+						where: { id: organiser.id },
+						data: {
+							nextContactDue: nextCall,
+							...(reached && { lastContacted: now }),
+							...(reached && organiser.phone && { phoneVerifiedAt: now })
+						}
+					});
+				}
 				if (!reached) return;
 
 				// Question 6 classes the room, so every standing night here takes its answer.
-				if (register) {
+				if (register && !organiser) {
 					await tx.residency.updateMany({
 						where: { venueId: venue.id, active: true },
 						data: { register }

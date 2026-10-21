@@ -12,7 +12,8 @@ export const load: PageServerLoad = async ({ params }) => {
 	const o = await prisma.occurrence.findUnique({
 		where: { id: params.id },
 		include: {
-			venue: { select: { id: true, name: true } },
+			venue: { select: { id: true, name: true, phone: true, whatsapp: true } },
+			organiser: { select: { id: true, name: true, contactName: true, phone: true, whatsapp: true } },
 			residency: { select: { id: true, eventName: true, lineup: true, perks: { select: { id: true } } } },
 			perks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }
 		}
@@ -26,6 +27,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			id: o.id,
 			date: isoDate(o.date),
 			venue: o.venue,
+			organiser: o.organiser,
 			residency: o.residency ? { id: o.residency.id, eventName: o.residency.eventName, lineup: o.residency.lineup, perkCount: o.residency.perks.length } : null,
 			eventName: o.eventName,
 			category: o.category,

@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
 	import Reminders from '#lib/components/Reminders.svelte';
+	import CallPanel from '#lib/components/CallPanel.svelte';
 	import { ROLES } from '#lib/build/acts.js';
 	import { shortDate } from '#lib/build/week.js';
 	import type { PageProps } from './$types';
@@ -122,6 +123,18 @@
 		</main>
 
 		<aside class="space-y-4">
+			<CallPanel
+				kind="act"
+				id={a.id}
+				who="ACT"
+				name={a.contactName ? `${a.contactName} · ${a.name}` : a.name}
+				phone={a.phone}
+				whatsapp={a.whatsapp}
+				href="/calls/act/{a.id}"
+				action="What have you got coming up? →"
+			>
+				Acts hear about their bookings before venues publicise them. Each gig they name goes in as a confirmed night, from them.
+			</CallPanel>
 			<section id="reminders" class="panel scroll-mt-4 {data.reminders.some((x) => x.due && x.due < data.today) ? 'border-energy/50' : ''}">
 				<h3 class="panel-title mb-2">You asked yourself to</h3>
 				<Reminders items={data.reminders} today={data.today} subject={{ kind: 'act', id: data.act.id, label: data.act.name }} />
