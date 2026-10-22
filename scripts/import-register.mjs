@@ -107,7 +107,8 @@ const venues = load('1_venue.csv').map((v) => ({
 	zoneName: v.zoneName,
 	contactName: v.contactName,
 	contactRole: v.contactRole,
-	phone: v.phone,
+	// A venue can have several numbers; the sheet's one cell may hold "a / b".
+	phones: (v.phone ?? '').split(/[/,]/).map((n) => n.trim()).filter(Boolean),
 	conversationTest: v.conversationTest,
 	provisionalRegister: v.provisionalRegister,
 	paidClient: bool(v.paidClient, false),
@@ -185,6 +186,7 @@ const casts = {
 	confirmedOn: 'timestamp',
 	lastConfirmed: 'timestamp',
 	areas: 'text[]',
+	phones: 'text[]',
 	lineup: 'text[]'
 };
 

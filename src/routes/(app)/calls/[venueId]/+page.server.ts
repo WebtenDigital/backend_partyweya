@@ -12,7 +12,8 @@ import { asDate, isWeek, isoDate, kampalaDate } from '#lib/server/register.js';
 import { CADENCE, Q6 } from '#lib/build/calls.js';
 import { savePerks } from '#lib/server/perks.js';
 import { lineupFrom, lineupSuggestions, newActsParam, unclassified } from '#lib/server/acts.js';
-import { Invalid, failureMessage, money, oneOf, phone, slug, text, time } from '#lib/server/forms.js';
+import { Invalid, failureMessage, money, oneOf, phoneList, slug, text, time } from '#lib/server/forms.js';
+import { answeredOn, dialNumber, samePhone, withPhones } from '#lib/phones.js';
 import { kampalaToday, nextMonday } from '#lib/build/week.js';
 import { reminders } from '#lib/server/reminders.js';
 import { organiserFrom, organiserOptions } from '#lib/server/organisers.js';
@@ -80,7 +81,9 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			division: venue.zone?.division ?? null,
 			contactName: venue.contactName,
 			contactRole: venue.contactRole,
-			phone: venue.phone,
+			phone: dialNumber(venue), //  what this call dials: the answered number, else the first
+			phones: venue.phones,
+			verifiedPhone: venue.verifiedPhone,
 			whatsapp: venue.whatsapp,
 			bestTimeToReach: venue.bestTimeToReach,
 			conversationTest: venue.conversationTest,
@@ -166,7 +169,7 @@ export const actions: Actions = {
 
 			const venue = await prisma.venue.findUnique({
 				where: { id: params.venueId },
-				select: { id: true, notes: true, phone: true }
+				select: { id: true, notes: true, phones: true, verifiedPhone: true }
 			});
 			if (!venue) throw new Invalid('No such venue');
 
@@ -200,8 +203,14 @@ export const actions: Actions = {
 				dial === 'venue' ? 'venue' : dial === 'organiser' ? 'organiser' : ident === 'promoter' ? 'organiser' : ident === 'venue' ? 'venue' : null;
 
 			const comingUp = text(f, 'comingUp');
-			const newPhone = f.has('phone') ? phone(f, 'phone') : venue.phone;
-			const phoneChanged = newPhone !== venue.phone;
+			// The venue's numbers: edited on the call if the field was, then — reached on the
+			// number actually dialled — that one is verified and goes to the front.
+			let numbers: { phones: string[]; verifiedPhone: string | null; phoneVerifiedAt?: Date | null } = f.has('phone')
+				? withPhones(venue, phoneList(f, 'phone'))
+				: { phones: venue.phones, verifiedPhone: venue.verifiedPhone };
+			const dialled = text(f, 'dialled');
+			if (reached && dial === 'venue' && dialled && numbers.phones.some((p) => samePhone(p, dialled)))
+				numbers = { ...answeredOn(numbers.phones, dialled), phoneVerifiedAt: now };
 
 			await prisma.$transaction(async (tx) => {
 				// Identification first: it decides who the rest of the call was with.
@@ -215,7 +224,9 @@ export const actions: Actions = {
 						// The number moves to them: it lives in exactly one place.
 						await tx.organiser.update({ where: { id: organiserId }, data: { phone: who.phone } });
 					} else {
-						await tx.venue.update({ where: { id: venue.id }, data: { phone: who.phone, phoneVerifiedAt: null } });
+						// Their number now, tried first; nobody has answered it as the venue's yet.
+						const phones = [who.phone, ...venue.phones.filter((p) => !samePhone(p, who.phone))];
+						await tx.venue.update({ where: { id: venue.id }, data: withPhones(venue, phones) });
 					}
 					const moved = { ...(ident === 'promoter' && { organiserId }), bookingPhone: null, bookingPhoneNote: null };
 					if (who.from === 'occurrence') await tx.occurrence.update({ where: { id: level }, data: moved });
@@ -229,10 +240,7 @@ export const actions: Actions = {
 						// Only fields the form sent, so a partial post never blanks the rest.
 						...(f.has('contactName') && { contactName: text(f, 'contactName') }),
 						...(f.has('contactRole') && { contactRole: oneOf(ContactRole, text(f, 'contactRole'), 'role') }),
-						...(f.has('phone') && { phone: newPhone }),
-						// Reached on the number on file: it's verified. A number changed during the
-						// call hasn't been answered yet, so it starts unverified.
-						...(phoneChanged ? { phoneVerifiedAt: null } : reached && venue.phone && dial === 'venue' ? { phoneVerifiedAt: now } : {}),
+						...numbers,
 						...(f.has('phone') && { whatsapp: f.get('whatsapp') === 'on' }),
 						...(f.has('bestTime') && { bestTimeToReach: text(f, 'bestTime') }),
 						...(callee === 'venue' && { nextContactDue: nextCall }),

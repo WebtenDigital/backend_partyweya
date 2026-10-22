@@ -16,7 +16,7 @@ export const load: PageServerLoad = async ({ url, cookies }) => {
 	const [{ queue, gate, vouches, reminders: open }, venueCount, numbers, subjectList] = await Promise.all([
 		loadOwed(week, today),
 		prisma.venue.count(),
-		prisma.venue.count({ where: { phone: { not: null } } }),
+		prisma.venue.count({ where: { phones: { isEmpty: false } } }),
 		subjects()
 	]);
 

@@ -11,6 +11,7 @@
 	import type { Source } from '#lib/server/prisma.js';
 	import { CADENCE, Q6 } from '#lib/build/calls.js';
 	import { shortDate } from '#lib/build/week.js';
+	import { showPhones } from '#lib/phones.js';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -68,6 +69,19 @@
 	);
 	// svelte-ignore state_referenced_locally — fixed by the link that opened this call.
 	const dial = data.dial;
+
+	// Which of the venue's numbers this call is on: the answered one, else the first.
+	// No answer? Another number is offered here, inside the same call — not a week later.
+	// svelte-ignore state_referenced_locally
+	let dialled = $state(data.venue.phone);
+	let tried = $state<string[]>([]);
+	const others = $derived(data.venue.phones.filter((p) => p !== dialled));
+	const untried = $derived(others.find((p) => !tried.includes(p)) ?? null);
+	function tryNumber(n: string) {
+		if (dialled && !tried.includes(dialled)) tried = [...tried, dialled];
+		dialled = n;
+		outcome = '';
+	}
 	let ident = $state('');
 	// Question 6 and the venue's cadence belong to whoever answers for the room.
 	const venueOnLine = $derived(dial === 'venue' || (dial === 'booking' && ident === 'venue'));
@@ -196,7 +210,7 @@
 							{data.venue.name}. Am I through to the right person about it? Who am I speaking to?”
 						</blockquote>
 						<div class="grid gap-2 sm:grid-cols-3">
-							{#each [['promoter', 'A promoter', 'Add them, link the night, and the number moves to them.'], ['venue', data.venue.name, 'It becomes the venue’s number, unverified.'], ['neither', 'Neither', 'A ticket seller, a hostess line — the number stays on the night, and that’s fine.']] as [key, title, effect] (key)}
+							{#each [['promoter', 'A promoter', 'Add them, link the night, and the number moves to them.'], ['venue', data.venue.name, 'It becomes the venue’s first number to try, unverified.'], ['neither', 'Neither', 'A ticket seller, a hostess line — the number stays on the night, and that’s fine.']] as [key, title, effect] (key)}
 								<label class="cursor-pointer rounded-md border p-3 text-sm {ident === key ? 'border-social bg-ink' : 'border-line hover:border-dim'}">
 									<input type="radio" name="ident" value={key} bind:group={ident} class="sr-only" />
 									<span class="block font-semibold">{title}</span>
@@ -206,13 +220,40 @@
 						</div>
 						{#if ident === 'promoter'}
 							<OrganiserPicker name="ident" organisers={data.organisers} numberFrom={who.phone} placeholder="Who did you get? Search, or type their name" />
-						{:else if ident === 'venue' && data.venue.phone && data.venue.phone !== who.phone}
-							<p class="text-xs text-social">Replaces {data.venue.phone} as {data.venue.name}’s number.</p>
+						{:else if ident === 'venue' && data.venue.phones.length && !data.venue.phones.includes(who.phone)}
+							<p class="text-xs text-social">Goes ahead of {showPhones(data.venue.phones)} — {data.venue.name} keeps those too.</p>
 						{/if}
 						<p class="text-xs text-dim">Only recorded if you reach someone. Nothing is attributed unless you pick it.</p>
 					{:else}
 						<p class="text-sm text-energy">The night selected has no flyer number. Pick the night whose number you rang.</p>
 					{/if}
+				</section>
+			{/if}
+			{#if dial === 'venue'}
+				<section class="panel space-y-2">
+					<input type="hidden" name="dialled" value={dialled ?? ''} />
+					<p class="font-mono text-[10px] tracking-wider text-dim">DIALLING</p>
+					{#if dialled}
+						<p class="font-mono text-lg">
+							{dialled}
+							{#if dialled === data.venue.verifiedPhone}<span class="ml-2 rounded border border-vetted/50 px-1 align-middle text-[10px] text-vetted">answered before</span>{/if}
+							{#if data.venue.whatsapp && dialled === data.venue.phone}<span class="ml-1 rounded border border-vetted/50 px-1 align-middle text-[10px] text-vetted" title="The WhatsApp flag is about this number">wa</span>{/if}
+						</p>
+					{:else}
+						<p class="font-mono text-sm text-social">no number on file — add one below</p>
+					{/if}
+					{#if outcome === 'no-answer' && dialled && untried}
+						<p class="flex flex-wrap items-center gap-2 rounded-md border border-social/60 bg-social/5 px-3 py-2 text-sm">
+							No answer on <span class="font-mono">{dialled}</span> — try <span class="font-mono">{untried}</span>?
+							<button type="button" class="btn h-9" onclick={() => tryNumber(untried!)}>Try {untried}</button>
+						</p>
+					{/if}
+					{#each others as n (n)}
+						<p class="flex items-center gap-3 font-mono text-sm text-dim">
+							{n}{#if tried.includes(n)}<span class="text-[10px]">no answer</span>{/if}
+							<button type="button" class="text-xs text-chill underline" onclick={() => tryNumber(n)}>try this one</button>
+						</p>
+					{/each}
 				</section>
 			{/if}
 			<blockquote class="panel border-l-4 border-l-line">
@@ -380,11 +421,11 @@
 							{#each ROLES as r (r)}<option value={r}>{r}</option>{/each}
 						</select>
 					</label>
-					<label class="field"><span>Number</span><input name="phone" type="tel" class="input" value={data.venue.phone ?? ''} placeholder="none on file" /></label>
+					<label class="field"><span>Numbers</span><input name="phone" type="tel" class="input" value={showPhones(data.venue.phones)} placeholder="none on file" title="In the order to try them, “ / ”-separated" /></label>
 				</div>
 				<div class="grid gap-3 sm:grid-cols-2 sm:items-center">
 					<label class="flex items-center gap-2 text-sm">
-						<input type="checkbox" name="whatsapp" checked={data.venue.whatsapp} /> On WhatsApp — the reverse-flow channel
+						<input type="checkbox" name="whatsapp" checked={data.venue.whatsapp} /> {dialled ?? 'Their number'} is on WhatsApp — the reverse-flow channel
 					</label>
 					<input name="bestTime" class="input" value={data.venue.bestTimeToReach ?? ''} placeholder="Best time to reach them" />
 				</div>

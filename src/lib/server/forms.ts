@@ -2,6 +2,7 @@
 // translated for the person filling the form in.
 
 import { droppedConnection } from './db.js';
+import { splitPhones } from '#lib/phones.js';
 
 export class Invalid extends Error {}
 
@@ -51,7 +52,9 @@ const CONSTRAINTS: Record<string, string> = {
 		'TRANSFERRED needs someone in the lineup whose own act record says they transfer. Set that on the act first, or claim FACTUAL.',
 	act_transfers_needs_note: 'Saying an act transfers needs a note on why.',
 	reminder_one_subject: 'A reminder hangs off one record — a venue, an act, an organiser or a night. Pick which.',
-	reminder_needs_body: 'Say what the reminder is for.'
+	reminder_needs_body: 'Say what the reminder is for.',
+	venue_verified_phone_listed: 'The verified number has to be one of the venue’s numbers.',
+	venue_verified_phone_dated: 'A verified number needs the date it was verified, and vice versa.'
 };
 
 /** An Invalid or a known database guard → a form failure message; anything else rethrows. */
@@ -65,12 +68,18 @@ export function failureMessage(e: unknown) {
 }
 
 /** A phone number as typed, tidied: digits, spaces, an optional leading +; 9–15 digits. */
-export const phone = (f: FormData, k: string) => {
-	const v = text(f, k);
-	if (v == null) return null;
+function tidyPhone(v: string) {
 	const tidy = v.replace(/[-().]/g, ' ').replace(/\s+/g, ' ').trim();
 	const digits = tidy.replace(/\D/g, '');
 	if (!/^\+?[\d ]+$/.test(tidy) || digits.length < 9 || digits.length > 15)
-		throw new Invalid('That doesn’t look like a phone number — 9 to 15 digits, like 0772 123456 or +256 772 123456.');
+		throw new Invalid(`“${v}” doesn’t look like a phone number — 9 to 15 digits, like 0772 123456 or +256 772 123456.`);
 	return tidy;
+}
+
+export const phone = (f: FormData, k: string) => {
+	const v = text(f, k);
+	return v == null ? null : tidyPhone(v);
 };
+
+/** A venue's numbers from one field: split on "/" and ",", tidied, blanks and repeats dropped. */
+export const phoneList = (f: FormData, k: string) => splitPhones(splitPhones(text(f, k)).map(tidyPhone).join('/'));

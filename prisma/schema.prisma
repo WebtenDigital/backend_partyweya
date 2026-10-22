@@ -198,9 +198,13 @@ model Venue {
 
   contactName     String?
   contactRole     ContactRole?
-  phone           String?
-  phoneVerifiedAt DateTime? // set when a call reaches someone; cleared when the number changes
-  whatsapp        Boolean      @default(false)
+  // Every number found for the venue, in the order to try them. No labels: which
+  // is the manager's is learned on a call, not guessed at a keyboard.
+  phones          String[]     @default([])
+  verifiedPhone   String? //    the number a call actually reached — the value, not an
+  //                            index, so reordering can't move what "verified" means
+  phoneVerifiedAt DateTime? //  when; set and cleared together with verifiedPhone
+  whatsapp        Boolean      @default(false) // about the number dialled: verifiedPhone, else phones[0]
   bestTimeToReach String? //   nightlife staff are not morning people
 
   conversationTest    ConversationTest? // the call script's register diagnostic

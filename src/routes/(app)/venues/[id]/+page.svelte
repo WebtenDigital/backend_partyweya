@@ -6,6 +6,7 @@
 	import { DAYS } from '#lib/build/add.js';
 	import { shortDate } from '#lib/build/week.js';
 	import { placeResolver } from '#lib/place.js';
+	import { showPhones } from '#lib/phones.js';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -282,13 +283,13 @@
 				<input type="hidden" name="id" value={v.id} />
 				<input type="hidden" name="updatedAt" value={v.updatedAt} />
 				<h3 class="panel-title">Contact</h3>
-				<label class="field"><span>Number</span>
-					<input name="phone" type="tel" inputmode="tel" autocomplete="off" class="input h-11 font-mono {v.phone ? '' : 'placeholder:text-social'}" placeholder="no number" value={v.phone ?? ''} />
+				<label class="field"><span>Numbers <span class="font-normal normal-case text-dim">— in the order to try them; paste two as “0773814441 / 0703944142”</span></span>
+					<input name="phone" type="tel" inputmode="tel" autocomplete="off" class="input h-11 font-mono {v.phone ? '' : 'placeholder:text-social'}" placeholder="no number" value={showPhones(v.phones)} />
 				</label>
 				<label class="flex h-9 items-center gap-2 text-sm">
 					<input type="hidden" name="whatsapp" value={whatsapp ? 'true' : 'false'} />
 					<input type="checkbox" class="size-5" bind:checked={whatsapp} />
-					On WhatsApp
+					{v.phone ? `${v.phone} is on WhatsApp` : 'On WhatsApp'}
 				</label>
 				<label class="field"><span>Ask for</span><input name="contactName" class="input h-11" placeholder="—" value={v.contactName ?? ''} /></label>
 				<label class="field"><span>Role</span>

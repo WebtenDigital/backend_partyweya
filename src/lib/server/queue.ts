@@ -8,6 +8,7 @@ import { reminders } from './reminders.js';
 import { addDays, nextMonday } from '#lib/build/week.js';
 import { callQueue, owedNow } from '#lib/build/calls.js';
 import { vouchRound } from '#lib/build/vouch.js';
+import { dialNumber } from '#lib/phones.js';
 
 export async function loadOwed(week: string, today: string) {
 	const weekEnd = addDays(week, 6);
@@ -33,7 +34,7 @@ export async function loadOwed(week: string, today: string) {
 	const venueIds = new Set([...residencies.map((r) => r.venueId), ...occurrences.map((o) => o.venueId), ...dueVenues.map((v) => v.id)]);
 	const venues = await prisma.venue.findMany({
 		where: { id: { in: [...venueIds] } },
-		select: { id: true, name: true, phone: true, conversationTest: true, zoneName: true, updatedAt: true }
+		select: { id: true, name: true, phones: true, verifiedPhone: true, conversationTest: true, zoneName: true, updatedAt: true }
 	});
 
 	const organiserIds = [...new Set([...residencies, ...occurrences].map((x) => x.organiserId).filter((x): x is string => !!x))];
@@ -44,7 +45,7 @@ export async function loadOwed(week: string, today: string) {
 
 	const queue = callQueue(
 		week,
-		venues.map((v) => ({ ...v, zone: v.zoneName, updatedAt: v.updatedAt.toISOString() })),
+		venues.map(({ phones, verifiedPhone, ...v }) => ({ ...v, phone: dialNumber({ phones, verifiedPhone }), zone: v.zoneName, updatedAt: v.updatedAt.toISOString() })),
 		residencies.map((r) => ({
 			id: r.id,
 			venueId: r.venueId,

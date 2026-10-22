@@ -10,8 +10,9 @@
 
 import { prisma, ContactRole } from './prisma.js';
 import type { Tx } from './db.js';
-import { Invalid, oneOf, phone, slug, text } from './forms.js';
+import { Invalid, oneOf, phoneList, slug, text } from './forms.js';
 import { kampalaToday } from '#lib/build/week.js';
+import { withPhones } from '#lib/phones.js';
 
 /** The area vocabulary, for the resolver in #lib/place and the areas picker. */
 export const areaVocabulary = () =>
@@ -27,7 +28,7 @@ export interface NewVenue {
 	id?: string | null; //  an override of the slug, typed at creation; never changed after
 	location?: string | null;
 	zoneName?: string | null;
-	phone?: string | null;
+	phones?: string[];
 	whatsapp?: boolean;
 }
 
@@ -58,7 +59,7 @@ export async function createVenue(db: Tx, v: NewVenue) {
 			name,
 			location: v.location?.trim() || null,
 			zoneName: await checkZone(db, v.zoneName ?? null),
-			phone: v.phone ?? null,
+			phones: v.phones ?? [], // typed is not answered: none starts verified
 			whatsapp: v.whatsapp ?? false,
 			tier: 'C',
 			nextContactDue: new Date(`${kampalaToday()}T00:00:00+03:00`)
@@ -73,9 +74,21 @@ export const createVenueFrom = (f: FormData) =>
 		id: text(f, 'id'),
 		location: text(f, 'location'),
 		zoneName: text(f, 'zoneName'),
-		phone: phone(f, 'phone'),
+		phones: phoneList(f, 'phone'),
 		whatsapp: f.get('whatsapp') === 'on' || f.get('whatsapp') === 'true'
 	});
+
+/**
+ * A venue's numbers, replaced by a typed or pasted list. The one write of
+ * Venue.phones outside a call: the venue list, the record, the call queue and
+ * the "who to call" panel all come through here. Verification is kept only
+ * while the verified number is still listed.
+ */
+export async function numbersUpdate(id: string, phones: string[]) {
+	const current = await prisma.venue.findUnique({ where: { id }, select: { phones: true, verifiedPhone: true } });
+	if (!current) throw new Invalid('That venue is no longer in the register.');
+	return withPhones(current, phones);
+}
 
 /**
  * Save whichever of a venue's own fields the form sent: number, WhatsApp and
@@ -89,11 +102,9 @@ export async function saveVenue(f: FormData) {
 	const seen = text(f, 'updatedAt');
 	if (!id || !seen) throw new Invalid('Missing venue — reload the page.');
 
-	const current = await prisma.venue.findUnique({ where: { id }, select: { phone: true } });
-	if (!current) throw new Invalid('That venue is no longer in the register.');
-
 	const data: {
-		phone?: string | null;
+		phones?: string[];
+		verifiedPhone?: string | null;
 		phoneVerifiedAt?: null;
 		whatsapp?: boolean;
 		contactName?: string | null;
@@ -103,11 +114,8 @@ export async function saveVenue(f: FormData) {
 		location?: string | null;
 		areas?: string[];
 	} = {};
-	if (f.has('phone')) {
-		data.phone = phone(f, 'phone');
-		// A number nobody has answered yet isn't verified, whatever it replaced.
-		if (data.phone !== current.phone) data.phoneVerifiedAt = null;
-	}
+	// One field, any number of numbers: "0773814441 / 0703944142" pasted from a bio.
+	if (f.has('phone')) Object.assign(data, await numbersUpdate(id, phoneList(f, 'phone')));
 	if (f.has('whatsapp')) data.whatsapp = f.get('whatsapp') === 'on' || f.get('whatsapp') === 'true';
 	if (f.has('contactName')) data.contactName = text(f, 'contactName');
 	if (f.has('contactRole')) data.contactRole = oneOf(ContactRole, text(f, 'contactRole'), 'role');
@@ -133,7 +141,7 @@ export async function saveVenue(f: FormData) {
 
 	const saved = await prisma.venue.findUniqueOrThrow({
 		where: { id },
-		select: { name: true, location: true, areas: true, phone: true, whatsapp: true, contactName: true, contactRole: true, zoneName: true, phoneVerifiedAt: true, updatedAt: true }
+		select: { name: true, location: true, areas: true, phones: true, verifiedPhone: true, whatsapp: true, contactName: true, contactRole: true, zoneName: true, phoneVerifiedAt: true, updatedAt: true }
 	});
 	return { id, ...saved, phoneVerifiedAt: saved.phoneVerifiedAt?.toISOString() ?? null, updatedAt: saved.updatedAt.toISOString() };
 }

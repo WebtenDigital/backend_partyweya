@@ -4,6 +4,7 @@ import { Invalid, failureMessage, text } from '#lib/server/forms.js';
 import { asDate, isoDate, kampalaDate } from '#lib/server/register.js';
 import { kampalaToday } from '#lib/build/week.js';
 import { areaVocabulary, saveVenue } from '#lib/server/venues.js';
+import { dialNumber } from '#lib/phones.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -34,7 +35,8 @@ export const load: PageServerLoad = async ({ params }) => {
 			areas: v.areas,
 			zone: v.zone?.name ?? null,
 			division: v.zone?.division ?? null,
-			phone: v.phone,
+			phones: v.phones,
+			phone: dialNumber(v), // the number a call dials, and the one WhatsApp is about
 			whatsapp: v.whatsapp,
 			contactName: v.contactName,
 			contactRole: v.contactRole,

@@ -14,6 +14,7 @@ import {
 	type ResidencyIn,
 	type VenueIn
 } from '#lib/build/week.js';
+import { dialNumber } from '#lib/phones.js';
 
 // Timestamps → the Kampala calendar date; @db.Date columns are already dates.
 export const kampalaDate = (d: Date | null) => (d ? kampalaToday(d) : null);
@@ -34,13 +35,14 @@ const perkIn = (p: {
 type VenueRow = {
 	id: string;
 	name: string;
-	phone: string | null;
+	phones: string[];
+	verifiedPhone: string | null;
 	zone: { name: string; division: string } | null;
 };
 const venueIn = (v: VenueRow): VenueIn => ({
 	id: v.id,
 	name: v.name,
-	phone: v.phone,
+	phone: dialNumber(v),
 	zone: v.zone?.name ?? null,
 	division: v.zone?.division ?? null
 });

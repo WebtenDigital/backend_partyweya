@@ -6,6 +6,7 @@
 	import { kampalaToday, shortDate } from '#lib/build/week.js';
 	import { placeResolver } from '#lib/place.js';
 	import { similarVenues } from '#lib/venues.js';
+	import { dialNumber, showPhones } from '#lib/phones.js';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -15,8 +16,9 @@
 		id: string;
 		name: string;
 		location: string | null;
-		phone: string; // the draft in the input
-		saved: string | null; // what the database holds
+		phone: string; // the draft in the input: every number, " / "-joined
+		saved: string | null; // what the database holds, joined the same way
+		dials: string | null; // the number a call dials — what the WhatsApp flag is about
 		whatsapp: boolean;
 		zoneName: string;
 		verifiedAt: string | null;
@@ -32,8 +34,9 @@
 			id: v.id,
 			name: v.name,
 			location: v.location,
-			phone: v.phone ?? '',
-			saved: v.phone,
+			phone: showPhones(v.phones),
+			saved: showPhones(v.phones) || null,
+			dials: dialNumber(v),
 			whatsapp: v.whatsapp,
 			zoneName: v.zoneName ?? '',
 			verifiedAt: v.phoneVerifiedAt,
@@ -103,16 +106,19 @@
 	}
 
 	const submitRow = (r: Row) => () => {
+		const sent = r.phone.trim();
 		r.status = 'saving';
 		r.error = null;
 		kept.add(r.id);
 		kept = new Set(kept);
 		return async ({ result }: { result: { type: string; data?: Record<string, unknown> } }) => {
 			if (result.type === 'success' && result.data?.saved) {
-				const s = result.data.saved as { phone: string | null; whatsapp: boolean; zoneName: string | null; phoneVerifiedAt: string | null; updatedAt: string };
-				r.saved = s.phone;
-				// Keep anything typed while the save was in flight.
-				if (r.phone.trim() === (s.phone ?? '')) r.phone = s.phone ?? '';
+				const s = result.data.saved as { phones: string[]; verifiedPhone: string | null; whatsapp: boolean; zoneName: string | null; phoneVerifiedAt: string | null; updatedAt: string };
+				const typed = r.phone.trim();
+				r.saved = showPhones(s.phones) || null;
+				r.dials = dialNumber(s);
+				// Show the tidied list — unless something new was typed while the save was in flight.
+				if (typed === sent) r.phone = r.saved ?? '';
 				r.whatsapp = s.whatsapp;
 				r.zoneName = s.zoneName ?? '';
 				r.verifiedAt = s.phoneVerifiedAt;
@@ -204,13 +210,14 @@
 		return async ({ result }: { result: { type: string; data?: Record<string, unknown> } }) => {
 			creating = false;
 			if (result.type === 'success' && result.data?.created) {
-				const v = result.data.created as { id: string; name: string; location: string | null; zoneName: string | null; phone: string | null; whatsapp: boolean; phoneVerifiedAt: string | null; updatedAt: string };
+				const v = result.data.created as { id: string; name: string; location: string | null; zoneName: string | null; phones: string[]; verifiedPhone: string | null; whatsapp: boolean; phoneVerifiedAt: string | null; updatedAt: string };
 				rows.push({
 					id: v.id,
 					name: v.name,
 					location: v.location,
-					phone: v.phone ?? '',
-					saved: v.phone,
+					phone: showPhones(v.phones),
+					saved: showPhones(v.phones) || null,
+					dials: dialNumber(v),
 					whatsapp: v.whatsapp,
 					zoneName: v.zoneName ?? '',
 					verifiedAt: v.phoneVerifiedAt,
@@ -256,7 +263,7 @@
 	<div class="space-y-4 px-4 py-5 sm:px-6">
 		<p class="text-sm">
 			<strong class={withNumber ? 'text-fg' : 'text-social'}>{withNumber} of {rows.length}</strong> have a number.
-			<span class="text-dim">Type a number and press Enter, or Tab to the next row — each row saves on its own. Saving a number here is not a call: the call queue is untouched.</span>
+			<span class="text-dim">Type a number and press Enter, or Tab to the next row — each row saves on its own. Two numbers in a bio? Paste them as they are: <span class="font-mono">0773814441 / 0703944142</span>. Saving a number here is not a call: the call queue is untouched.</span>
 		</p>
 
 		<div class="flex flex-wrap items-center gap-2">
@@ -281,7 +288,7 @@
 		</div>
 
 		<div class="hidden grid-cols-[minmax(0,1.3fr)_170px_minmax(0,1.3fr)_200px_70px_130px] gap-3 px-3 font-mono text-[10px] tracking-wider text-dim uppercase md:grid">
-			<span>Name</span><span>Zone</span><span>Location</span><span>Phone</span><span>WhatsApp</span><span>Status</span>
+			<span>Name</span><span>Zone</span><span>Location</span><span>Phones</span><span title="Whether the number a call dials is on WhatsApp: the verified one, else the first">WA · dialled</span><span>Status</span>
 		</div>
 
 		{#if adding}
@@ -325,7 +332,7 @@
 					oninput={readZone}
 					aria-label="Location of the new venue"
 				/>
-				<input name="phone" type="tel" inputmode="tel" autocomplete="off" class="input h-11 font-mono" placeholder="0772 123456" bind:value={draft.phone} aria-label="Phone for the new venue" />
+				<input name="phone" type="tel" inputmode="tel" autocomplete="off" class="input h-11 font-mono" placeholder="0772 123456 / 0703 …" bind:value={draft.phone} aria-label="Phone numbers for the new venue" />
 				<label class="flex h-11 items-center gap-2 text-xs text-dim md:justify-center">
 					<input type="checkbox" name="whatsapp" class="size-5" bind:checked={draft.whatsapp} aria-label="The new venue is on WhatsApp" />
 					<span class="md:hidden">WhatsApp</span>
@@ -412,16 +419,17 @@
 						autocomplete="off"
 						class="input h-11 font-mono"
 						placeholder="0772 123456"
+						title={r.saved ?? undefined}
 						bind:value={r.phone}
 						bind:this={inputs[r.id]}
 						onkeydown={(e) => onPhoneKey(e, r)}
 						onblur={() => onPhoneBlur(r)}
-						aria-label="Phone for {r.name}"
+						aria-label="Phone numbers for {r.name}"
 					/>
 					<label class="flex h-11 items-center gap-2 text-xs text-dim md:justify-center">
 						<input type="hidden" name="whatsapp" value={r.whatsapp ? 'true' : 'false'} />
-						<input type="checkbox" class="size-5" bind:checked={r.whatsapp} onchange={() => save(r)} aria-label="{r.name} is on WhatsApp" />
-						<span class="md:hidden">WhatsApp</span>
+						<input type="checkbox" class="size-5" bind:checked={r.whatsapp} onchange={() => save(r)} aria-label="{r.dials ?? r.name} is on WhatsApp" title="About {r.dials ?? 'the number a call dials'}" />
+						<span class="md:hidden">WhatsApp{r.dials ? ` · ${r.dials}` : ''}</span>
 					</label>
 					<span class="font-mono text-xs {r.status === 'error' ? 'text-energy' : status.tone}">
 						{r.status === 'saving' ? 'saving…' : r.status === 'saved' ? 'saved ✓' : r.status === 'error' ? 'not saved' : status.text}

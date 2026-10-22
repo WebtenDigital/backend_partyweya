@@ -4,6 +4,7 @@ import { isWeek, kampalaDate, loadWeek } from '#lib/server/register.js';
 import { SWEEP_DAYS, addDays, daysBetween, kampalaToday, nextMonday, shortDate } from '#lib/build/week.js';
 import { unclassified } from '#lib/server/acts.js';
 import { reminders } from '#lib/server/reminders.js';
+import { dialNumber } from '#lib/phones.js';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url }) => {
@@ -36,7 +37,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	};
 	for (const v of dueVenues) {
 		const last = kampalaDate(v.lastContacted);
-		addCall(v.id, v.name, v.phone, last ? `Due · last called ${shortDate(last)}` : 'Due · never reached');
+		addCall(v.id, v.name, dialNumber(v), last ? `Due · last called ${shortDate(last)}` : 'Due · never reached');
 	}
 	for (const r of residencies) {
 		const last = kampalaDate(r.lastConfirmed);
@@ -44,7 +45,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		addCall(
 			r.venueId,
 			r.venue.name,
-			r.venue.phone,
+			dialNumber(r.venue),
 			last ? 'Standing roster · monthly sweep due' : 'Standing roster · never confirmed'
 		);
 	}

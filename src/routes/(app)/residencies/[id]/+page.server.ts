@@ -8,6 +8,7 @@ import { billingKey, billings, lineupFrom, lineupSuggestions, unclassified } fro
 import { asDate, isoDate, kampalaDate } from '#lib/server/register.js';
 import { kampalaToday, nextMonday } from '#lib/build/week.js';
 import { reminders } from '#lib/server/reminders.js';
+import { dialNumber } from '#lib/phones.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, url }) => {
@@ -15,7 +16,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		prisma.residency.findUnique({
 			where: { id: params.id },
 			include: {
-				venue: { select: { id: true, name: true, phone: true, whatsapp: true, zone: { select: { name: true, division: true } } } },
+				venue: { select: { id: true, name: true, phones: true, verifiedPhone: true, whatsapp: true, zone: { select: { name: true, division: true } } } },
 				organiser: { select: { id: true, name: true, contactName: true, role: true, phone: true, whatsapp: true } },
 				perks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }
 			}
@@ -29,7 +30,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 	]);
 	if (!r) error(404, 'No such standing night');
 	const billing = r.lineup.length ? ((await billings([r.lineup])).get(billingKey(r.lineup)) ?? null) : null;
-	const venue = { id: r.venue.id, name: r.venue.name, phone: r.venue.phone, whatsapp: r.venue.whatsapp };
+	const venue = { id: r.venue.id, name: r.venue.name, phone: dialNumber(r.venue), whatsapp: r.venue.whatsapp };
 	return {
 		suggestions,
 		billing,
@@ -41,7 +42,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		reminders: await reminders({ residency: r.id }),
 		residency: {
 			id: r.id,
-			venue: { id: r.venue.id, name: r.venue.name, phone: r.venue.phone, whatsapp: r.venue.whatsapp },
+			venue: { id: r.venue.id, name: r.venue.name, phone: dialNumber(r.venue), whatsapp: r.venue.whatsapp },
 			zone: r.venue.zone?.name ?? null,
 			division: r.venue.zone?.division ?? null,
 			organiser: r.organiser,

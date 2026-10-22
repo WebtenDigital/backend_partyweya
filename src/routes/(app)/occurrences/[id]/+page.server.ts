@@ -8,13 +8,14 @@ import { lineupFrom, lineupSuggestions, unclassified } from '#lib/server/acts.js
 import { isoDate, kampalaDate } from '#lib/server/register.js';
 import { kampalaToday, nextMonday } from '#lib/build/week.js';
 import { reminders } from '#lib/server/reminders.js';
+import { dialNumber } from '#lib/phones.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, url }) => {
 	const o = await prisma.occurrence.findUnique({
 		where: { id: params.id },
 		include: {
-			venue: { select: { id: true, name: true, phone: true, whatsapp: true } },
+			venue: { select: { id: true, name: true, phones: true, verifiedPhone: true, whatsapp: true } },
 			organiser: { select: { id: true, name: true, contactName: true, role: true, phone: true, whatsapp: true } },
 			residency: {
 				select: {
@@ -37,7 +38,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 	const organiser = who.kind === 'ORGANISER' ? (who.from === 'occurrence' ? o.organiser : (o.residency?.organiser ?? null)) : null;
 	return {
 		organisers: await organiserOptions(),
-		call: callPanel(who, { id: o.venue.id, name: o.venue.name, phone: o.venue.phone, whatsapp: o.venue.whatsapp }, organiser, o.id),
+		call: callPanel(who, { id: o.venue.id, name: o.venue.name, phone: dialNumber(o.venue), whatsapp: o.venue.whatsapp }, organiser, o.id),
 		suggestions: await lineupSuggestions(),
 		today: kampalaToday(),
 		week: nextMonday(kampalaToday()),

@@ -9,7 +9,8 @@ const rowFields = {
 	name: true,
 	location: true,
 	zoneName: true,
-	phone: true,
+	phones: true,
+	verifiedPhone: true,
 	whatsapp: true,
 	phoneVerifiedAt: true,
 	updatedAt: true
@@ -54,8 +55,8 @@ export const actions: Actions = {
 	// The blank row: a venue with no night yet, which is a Tier C lead.
 	create: async ({ request }) => {
 		try {
-			const { id, name, location, zoneName, phone, whatsapp, phoneVerifiedAt, updatedAt } = await createVenueFrom(await request.formData());
-			return { created: asRow({ id, name, location, zoneName, phone, whatsapp, phoneVerifiedAt, updatedAt }) };
+			const { id, name, location, zoneName, phones, verifiedPhone, whatsapp, phoneVerifiedAt, updatedAt } = await createVenueFrom(await request.formData());
+			return { created: asRow({ id, name, location, zoneName, phones, verifiedPhone, whatsapp, phoneVerifiedAt, updatedAt }) };
 		} catch (e) {
 			return failed(e);
 		}
