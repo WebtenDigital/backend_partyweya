@@ -30,5 +30,3 @@ vite.config.ts.timestamp-*
 # Register exports (internal: contacts, notes)
 /data
 
-# Licensed fonts: not redistributable — copy in locally (see README)
-/static/fonts/

@@ -59,8 +59,8 @@ You can preview the production build with `npm run preview`.
 
 The sans is **TT Firs Neue** (TypeType), self-hosted from `static/fonts/`:
 `TT-Firs-Neue-{Regular,Medium,Bold,ExtraBold,Black}.woff` (400, 500, 700, 800, 900).
-That folder is not in git. The files currently in use are TypeType's trial build,
-licensed for testing only — replace them with licensed files (same names, or update
-the `@font-face` rules in `src/routes/layout.css`) before deploying. Without them,
-pages fall back to the system sans. Mono is IBM Plex Mono from Google Fonts.
+They are committed and deployed. The files are TypeType's trial build, used here
+on the basis that this is non-commercial; if that changes, replace them with licensed
+files (same names, or update the `@font-face` rules in `src/routes/layout.css`).
+Without them, pages fall back to the system sans. Mono is IBM Plex Mono from Google Fonts.
 # backend_partyweya
