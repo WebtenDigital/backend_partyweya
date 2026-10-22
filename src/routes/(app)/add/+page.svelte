@@ -1,5 +1,6 @@
 <script lang="ts">
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
+	import ThisWeek from '#lib/components/ThisWeek.svelte';
 	import { enhance } from '$app/forms';
 	import { goto } from '$app/navigation';
 	import { DAYS, PROVENANCE, REPEATS, isoDay, nextOn, type Provenance, type Repeat } from '#lib/build/add.js';
@@ -207,7 +208,10 @@
 				<p class="text-sm text-dim">Answer what you know. Which table it lands in is worked out from that.</p>
 			</div>
 		</div>
-		<p class="text-right font-mono text-xs text-dim">esc to cancel<br />⌘↵ to save</p>
+		<div class="flex items-center gap-4">
+			<ThisWeek />
+			<p class="text-right font-mono text-xs text-dim">esc to cancel<br />⌘↵ to save</p>
+		</div>
 	</header>
 
 	<div class="grid gap-6 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_320px]">

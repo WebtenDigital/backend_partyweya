@@ -3,6 +3,7 @@ import { prisma } from '#lib/server/prisma.js';
 import { Invalid, failureMessage, text } from '#lib/server/forms.js';
 import { asDate, isoDate, kampalaDate } from '#lib/server/register.js';
 import { kampalaToday } from '#lib/build/week.js';
+import { areaVocabulary, saveVenue } from '#lib/server/venues.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -19,7 +20,13 @@ export const load: PageServerLoad = async ({ params }) => {
 		}
 	});
 	if (!v) error(404, 'No such venue');
+	const [zones, areas] = await Promise.all([
+		prisma.zone.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' }, select: { name: true } }),
+		areaVocabulary()
+	]);
 	return {
+		zones: zones.map((z) => z.name),
+		areas,
 		venue: {
 			id: v.id,
 			name: v.name,
@@ -28,7 +35,9 @@ export const load: PageServerLoad = async ({ params }) => {
 			zone: v.zone?.name ?? null,
 			division: v.zone?.division ?? null,
 			phone: v.phone,
+			whatsapp: v.whatsapp,
 			contactName: v.contactName,
+			contactRole: v.contactRole,
 			lastContacted: kampalaDate(v.lastContacted),
 			dressCode: v.dressCode,
 			parkingNote: v.parkingNote,
@@ -41,6 +50,21 @@ export const load: PageServerLoad = async ({ params }) => {
 };
 
 export const actions: Actions = {
+	// Name, location, surroundings and zone. The same saveVenue the venue list's
+	// zone dropdown calls, so zone has one write path. The id never changes.
+	place: async ({ params, request }) => {
+		const f = await request.formData();
+		f.set('id', params.id);
+		try {
+			await saveVenue(f);
+		} catch (e) {
+			const message = failureMessage(e);
+			if (message) return fail(400, { placeError: message });
+			console.error(e);
+			return fail(500, { placeError: 'The save failed. Nothing was written.' });
+		}
+		return { placed: true };
+	},
 	// The venue's stable facts. Never the call fields: lastContacted and
 	// nextContactDue belong to a logged call.
 	facts: async ({ params, request }) => {

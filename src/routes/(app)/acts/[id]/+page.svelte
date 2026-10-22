@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
+	import ThisWeek from '#lib/components/ThisWeek.svelte';
 	import Reminders from '#lib/components/Reminders.svelte';
 	import CallPanel from '#lib/components/CallPanel.svelte';
 	import { ROLES } from '#lib/build/acts.js';
@@ -33,6 +34,7 @@
 				<p class="font-mono text-xs text-dim">{a.role?.replace('_', ' ') ?? 'NO ROLE YET'} · {data.nights.length} night{data.nights.length === 1 ? '' : 's'} billed</p>
 			</div>
 		</div>
+		<nav class="flex flex-wrap gap-2 text-sm"><ThisWeek /></nav>
 	</header>
 
 	<div class="grid gap-6 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_320px]">

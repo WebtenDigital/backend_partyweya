@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
+	import ThisWeek from '#lib/components/ThisWeek.svelte';
 	import Reminders from '#lib/components/Reminders.svelte';
 	import CallPanel from '#lib/components/CallPanel.svelte';
 	import VouchPanel from '#lib/components/VouchPanel.svelte';
@@ -50,6 +51,7 @@
 		</div>
 		<nav class="flex flex-wrap gap-2 text-sm">
 			{#if o.residency}<a href="/residencies/{o.residency.id}" class="btn">The standing night</a>{/if}
+			<ThisWeek />
 		</nav>
 	</header>
 

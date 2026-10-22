@@ -37,7 +37,7 @@ export function whoToCall(occurrence: NightContact | null | undefined, residency
 export function callHref(who: Who, venueId: string, ref: string) {
 	if (who.kind === 'ORGANISER') return `/calls/organiser/${who.organiserId}?ref=${ref}`;
 	if (who.kind === 'UNKNOWN') return `/calls/${venueId}?ref=${ref}&dial=booking`;
-	return `/calls/${venueId}?ref=${ref}`;
+	return ref ? `/calls/${venueId}?ref=${ref}` : `/calls/${venueId}`;
 }
 
 export const UNKNOWN_LABEL = 'from the flyer — we don’t know whose this is';

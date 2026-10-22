@@ -120,6 +120,14 @@ enum PerkKind {
   OTHER
 }
 
+// How often a venue is called. A venue nobody has called yet is C.
+// The call screen's cadence choice writes it; nothing else does.
+enum Tier {
+  A // monthly sweep
+  B // fortnightly
+  C // weekly
+}
+
 enum PostType {
   ROUND_UP
   CAROUSEL_CUT
@@ -149,8 +157,25 @@ model Zone {
   sortOrder Int? //      for ordering a zone filter in the UI
 
   venues Venue[]
+  areas  AreaZone[]
 
   @@index([division])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  AREAZONE — the area vocabulary, and the zone each area places a venue in.
+//  Seeded from partyweya_area_zone_map.csv, the map the register import
+//  used. A lookup, not a relation on Venue: Venue.areas holds SURROUNDINGS,
+//  and one area legitimately appears around venues in several zones.
+//  Read only through src/lib/place.ts.
+// ─────────────────────────────────────────────────────────────────────
+
+model AreaZone {
+  area     String @id //  canonical display spelling: "Ew'Antoni", "Entebbe Rd."
+  zone     Zone   @relation(fields: [zoneName], references: [name])
+  zoneName String
+
+  @@index([zoneName])
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -192,6 +217,7 @@ model Venue {
 
   lastContacted  DateTime?
   nextContactDue DateTime? // set by the cadence tier — drives "who is due this week"
+  tier           Tier? //    the cadence; C for a venue added and never called
   notes          String?
 
   residencies Residency[]

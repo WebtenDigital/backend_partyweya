@@ -1,5 +1,6 @@
 <script lang="ts">
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
+	import ThisWeek from '#lib/components/ThisWeek.svelte';
 	import { enhance } from '$app/forms';
 	import PerksEditor from '#lib/components/PerksEditor.svelte';
 	import LineupInput from '#lib/components/LineupInput.svelte';
@@ -154,7 +155,7 @@
 		<div class="flex items-center gap-5">
 			<HomeLogo week={data.currentWeek} />
 			<div>
-				<a href="/calls?week={data.week}" class="font-mono text-[11px] tracking-[0.2em] text-chill uppercase">← Call round</a>
+				<a href="/calls?week={data.week}" class="font-mono text-[11px] tracking-[0.2em] text-chill uppercase">← This week</a>
 				<h1 class="mt-1 text-2xl font-semibold tracking-tight">{data.venue.name}</h1>
 				<p class="font-mono text-xs text-dim">
 					{[data.venue.zone ?? 'NO ZONE', data.venue.division, data.venue.location].filter(Boolean).join(' · ')}
@@ -163,6 +164,7 @@
 		</div>
 		<div class="flex items-center gap-4">
 			<a href="/add?venue={data.venue.id}" class="btn text-sm" title="Something that doesn’t fit this call">+ Add to the register</a>
+			<span class="text-sm"><ThisWeek href="/calls?week={data.week}" /></span>
 			<p class="text-right font-mono text-xs text-dim">logging as {data.caller}<br />⌘↵ to save</p>
 		</div>
 	</header>

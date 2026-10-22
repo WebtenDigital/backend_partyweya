@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
+	import ThisWeek from '#lib/components/ThisWeek.svelte';
 	import { Q6 } from '#lib/build/calls.js';
 	import { DAYS } from '#lib/build/add.js';
 	import { dayHeading } from '#lib/build/week.js';
@@ -53,6 +54,7 @@
 				</p>
 			</div>
 		</div>
+		<nav class="flex flex-wrap gap-2 text-sm"><ThisWeek /></nav>
 	</header>
 
 	<main class="mx-auto max-w-3xl space-y-4 px-4 py-5 sm:px-6">

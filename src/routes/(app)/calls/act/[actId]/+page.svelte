@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
+	import ThisWeek from '#lib/components/ThisWeek.svelte';
 	import { CADENCE } from '#lib/build/calls.js';
 	import { shortDate } from '#lib/build/week.js';
 	import type { PageProps } from './$types';
@@ -43,7 +44,10 @@
 				</p>
 			</div>
 		</div>
-		<p class="text-right font-mono text-xs text-dim">logging as {data.caller}</p>
+		<div class="flex items-center gap-4">
+			<ThisWeek />
+			<p class="text-right font-mono text-xs text-dim">logging as {data.caller}</p>
+		</div>
 	</header>
 
 	<main class="mx-auto max-w-4xl space-y-4 px-4 py-5 sm:px-6">

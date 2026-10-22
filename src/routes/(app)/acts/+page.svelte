@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
+	import ThisWeek from '#lib/components/ThisWeek.svelte';
 	import { ROLES, ROLE_LABEL } from '#lib/build/acts.js';
 	import { shortDate } from '#lib/build/week.js';
 	import type { PageProps } from './$types';
@@ -50,9 +51,12 @@
 				<p class="text-sm text-dim">You can already ask which venues you know. This is the same question about people.</p>
 			</div>
 		</div>
-		{#if unroled}
-			<a href="#role-NONE" class="btn h-11 border-social/60 leading-7 text-social">{unroled} with no role yet →</a>
-		{/if}
+		<nav class="flex flex-wrap gap-2 text-sm">
+			{#if unroled}
+				<a href="#role-NONE" class="btn h-11 border-social/60 leading-7 text-social">{unroled} with no role yet →</a>
+			{/if}
+			<ThisWeek />
+		</nav>
 	</header>
 
 	<div class="grid gap-6 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_320px]">

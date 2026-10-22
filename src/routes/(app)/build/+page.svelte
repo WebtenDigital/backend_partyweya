@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { vouchExpiry, vouchState } from '#lib/build/vouch.js';
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
+	import ThisWeek from '#lib/components/ThisWeek.svelte';
 	import NewActsPrompt from '#lib/components/NewActsPrompt.svelte';
 	import {
 		REGISTERS,
@@ -115,7 +116,7 @@
 		<nav class="flex flex-wrap gap-2 text-sm">
 			<a href="/build?week={addDays(data.week, -7)}" class="btn">← Previous week</a>
 			<a href="/build?week={addDays(data.week, 7)}" class="btn">Next week →</a>
-			<a href="/calls?week={data.week}" class="btn">Call round</a>
+			<ThisWeek href="/calls?week={data.week}" />
 			<a href="/venues" class="btn">Venues</a>
 			<a href="/acts" class="btn">Acts</a>
 			<a href="/add" class="btn" title="Add to the register">+ Add</a>
@@ -280,8 +281,9 @@
 											{vs.toLowerCase()} · {vouchExpiry(r.attendedAt, data.today)}
 										</p>
 									{/if}
-									<!-- Same affordance as calling about it, different verb: logged the morning after. -->
-									<a href="/attend/{r.kind === 'STANDING' ? r.residencyId : r.key}" class="text-chill hover:underline">I was here →</a>
+									<!-- No "I was here" link on a summary row. Attendance takes five answers (date, Q6,
+									     register, what differed, initials); a one-tap link beside a dense row invites a
+									     vouch logged without them. It lives in "Were you there?" on the night's record. -->
 								</div>
 							</article>
 						{/each}

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
+	import ThisWeek from '#lib/components/ThisWeek.svelte';
 	import { kampalaToday, shortDate } from '#lib/build/week.js';
 	import type { PageProps } from './$types';
 
@@ -19,12 +20,13 @@
 				<p class="font-mono text-[11px] tracking-[0.2em] text-dim uppercase">Reminders</p>
 				<h1 class="mt-1 text-2xl font-semibold tracking-tight">Done — {h.cleared} of {h.written} cleared</h1>
 				<p class="text-sm text-dim">
-					Open ones live on the <a href="/calls#reminders" class="text-chill underline">call round</a> and on the records they hang off.
+					Open ones live on <a href="/calls#reminders" class="text-chill underline">This week</a> and on the records they hang off.
 					{#if h.overdue}<span class="text-energy">{h.overdue} overdue.</span>{/if}
 					{#if h.oldest}Oldest still open: {shortDate(h.oldest)}.{/if}
 				</p>
 			</div>
 		</div>
+		<nav class="flex flex-wrap gap-2 text-sm"><ThisWeek /></nav>
 	</header>
 
 	<main class="max-w-3xl space-y-1.5 px-4 py-5 sm:px-6">

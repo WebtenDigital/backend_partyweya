@@ -2,7 +2,10 @@
 	import { enhance } from '$app/forms';
 	import { tick } from 'svelte';
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
+	import ThisWeek from '#lib/components/ThisWeek.svelte';
 	import { kampalaToday, shortDate } from '#lib/build/week.js';
+	import { placeResolver } from '#lib/place.js';
+	import { similarVenues } from '#lib/venues.js';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -133,6 +136,97 @@
 				? { text: `verified ${shortDate(kampalaToday(new Date(r.verifiedAt)))}`, tone: 'text-vetted' }
 				: { text: 'unverified', tone: 'text-dim' };
 
+	// ── The blank row: a venue with no night yet. ──
+	// svelte-ignore state_referenced_locally
+	const place = placeResolver(data.areas);
+	const slug = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+	const blank = () => ({ name: '', id: '', zoneName: '', location: '', phone: '', whatsapp: false });
+
+	let adding = $state(false);
+	let draft = $state(blank());
+	let readFrom = $state<string | null>(null); // the area the zone was read from; null once someone picks a zone
+	let dupes = $state<Row[]>([]);
+	let different = $state(false); // "Different — add it"
+	let creating = $state(false);
+	let createError = $state<string | null>(null);
+	let createForm = $state<HTMLFormElement>();
+	let nameInput = $state<HTMLInputElement>();
+
+	async function startAdding() {
+		adding = true;
+		await tick();
+		nameInput?.focus();
+	}
+
+	function discard() {
+		draft = blank();
+		readFrom = null;
+		dupes = [];
+		different = false;
+		createError = null;
+		adding = false;
+	}
+
+	// An empty zone fills itself from the address; a zone someone chose is left alone.
+	// If nothing resolves the zone stays empty and nothing is said.
+	function readZone() {
+		if (draft.zoneName && !readFrom) return;
+		const areas = place.areasFromLocation(draft.location);
+		const { zone } = place.zoneForAreas(areas);
+		draft.zoneName = zone ?? '';
+		readFrom = zone ? areas[0] : null;
+	}
+
+	function checkName() {
+		dupes = similarVenues(draft.name, rows);
+	}
+
+	function create() {
+		if (creating || !draft.name.trim()) return;
+		checkName();
+		if (dupes.length && !different) return; // the warning is showing; "Different — add it" proceeds
+		createForm?.requestSubmit();
+	}
+
+	function onDraftKey(e: KeyboardEvent) {
+		if (e.key === 'Enter') {
+			e.preventDefault();
+			create();
+		} else if (e.key === 'Escape') {
+			e.preventDefault();
+			discard();
+		}
+	}
+
+	const submitCreate = () => {
+		creating = true;
+		createError = null;
+		return async ({ result }: { result: { type: string; data?: Record<string, unknown> } }) => {
+			creating = false;
+			if (result.type === 'success' && result.data?.created) {
+				const v = result.data.created as { id: string; name: string; location: string | null; zoneName: string | null; phone: string | null; whatsapp: boolean; phoneVerifiedAt: string | null; updatedAt: string };
+				rows.push({
+					id: v.id,
+					name: v.name,
+					location: v.location,
+					phone: v.phone ?? '',
+					saved: v.phone,
+					whatsapp: v.whatsapp,
+					zoneName: v.zoneName ?? '',
+					verifiedAt: v.phoneVerifiedAt,
+					updatedAt: v.updatedAt,
+					status: 'idle',
+					error: null
+				});
+				// Ready for the next one, without reaching for the mouse.
+				discard();
+				await startAdding();
+			} else {
+				createError = (result.data?.error as string) ?? 'The save failed. Nothing was written.';
+			}
+		};
+	};
+
 	const FILTERS: [Filter, string][] = [
 		['no-number', 'No number'],
 		['unverified', 'Unverified'],
@@ -153,7 +247,7 @@
 			</div>
 		</div>
 		<nav class="flex flex-wrap gap-2 text-sm">
-			<a href="/calls" class="btn">Call round</a>
+			<ThisWeek />
 			<a href="/acts" class="btn">Acts</a>
 			<a href="/build?week={data.currentWeek}" class="btn">Sunday Build</a>
 		</nav>
@@ -175,6 +269,7 @@
 					{label} <span class="font-mono text-xs text-dim">{counts[key]}</span>
 				</button>
 			{/each}
+			<button type="button" class="btn h-11" onclick={startAdding}>+ Add venue</button>
 			<input class="input h-11 w-56" placeholder="Search names" bind:value={search} oninput={() => (kept = new Set())} />
 			<label class="ml-auto flex items-center gap-2 text-sm text-dim">
 				Sort
@@ -188,6 +283,98 @@
 		<div class="hidden grid-cols-[minmax(0,1.3fr)_170px_minmax(0,1.3fr)_200px_70px_130px] gap-3 px-3 font-mono text-[10px] tracking-wider text-dim uppercase md:grid">
 			<span>Name</span><span>Zone</span><span>Location</span><span>Phone</span><span>WhatsApp</span><span>Status</span>
 		</div>
+
+		{#if adding}
+			<!-- Enter saves and Escape discards from any field in the row. -->
+			<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+			<form
+				method="POST"
+				action="?/create"
+				bind:this={createForm}
+				use:enhance={submitCreate}
+				onkeydown={onDraftKey}
+				class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 rounded-md border border-chill/60 bg-chill/5 px-3 py-2 text-sm md:grid-cols-[minmax(0,1.3fr)_170px_minmax(0,1.3fr)_200px_70px_130px]"
+			>
+				<input
+					name="name"
+					class="input col-span-2 h-11 font-semibold md:col-span-1"
+					placeholder="Venue name, as they brand it"
+					autocomplete="off"
+					bind:value={draft.name}
+					bind:this={nameInput}
+					oninput={() => ((different = false), (dupes = []))}
+					onblur={checkName}
+					aria-label="New venue name"
+				/>
+				<select
+					name="zoneName"
+					class="input h-11 font-mono text-xs {draft.zoneName ? '' : 'text-social'}"
+					bind:value={draft.zoneName}
+					onchange={() => (readFrom = null)}
+					aria-label="Zone for the new venue"
+				>
+					<option value="">NO ZONE</option>
+					{#each data.zones as z (z.name)}<option value={z.name}>{z.name}</option>{/each}
+				</select>
+				<input
+					name="location"
+					class="input col-span-2 h-11 text-xs md:col-span-1"
+					placeholder="Address, as the venue gives it"
+					autocomplete="off"
+					bind:value={draft.location}
+					oninput={readZone}
+					aria-label="Location of the new venue"
+				/>
+				<input name="phone" type="tel" inputmode="tel" autocomplete="off" class="input h-11 font-mono" placeholder="0772 123456" bind:value={draft.phone} aria-label="Phone for the new venue" />
+				<label class="flex h-11 items-center gap-2 text-xs text-dim md:justify-center">
+					<input type="checkbox" name="whatsapp" class="size-5" bind:checked={draft.whatsapp} aria-label="The new venue is on WhatsApp" />
+					<span class="md:hidden">WhatsApp</span>
+				</label>
+				<button type="button" class="btn-primary h-11" disabled={creating || !draft.name.trim()} onclick={create}>
+					{creating ? 'adding…' : 'Add'}
+				</button>
+
+				<div class="col-span-2 space-y-1.5 text-xs md:col-span-6">
+					{#if readFrom}
+						<p class="text-dim">
+							<span class="font-mono text-[10px] tracking-wider text-chill uppercase">auto</span>
+							read “{readFrom}” out of the address and placed it. Change it if it’s wrong.
+						</p>
+					{/if}
+					{#if dupes.length}
+						<div class="rounded-md border border-social/60 bg-social/5 px-3 py-2">
+							<p class="text-social">Already in the register? Two rows for one venue split its history.</p>
+							<ul class="mt-1 space-y-0.5">
+								{#each dupes as d (d.id)}
+									<li>
+										<a href="/venues/{d.id}" class="font-semibold text-chill underline">{d.name}</a>
+										<span class="font-mono text-dim">· {d.zoneName || 'NO ZONE'} · {d.location ?? 'no location'}</span>
+									</li>
+								{/each}
+							</ul>
+							{#if different}
+								<p class="mt-1 text-dim">Noted as a different venue — Enter adds it.</p>
+							{:else}
+								<button type="button" class="btn mt-2 h-9" onclick={() => ((different = true), create())}>Different — add it</button>
+							{/if}
+						</div>
+					{/if}
+					<label class="flex flex-wrap items-center gap-2 text-dim">
+						id
+						<input
+							name="id"
+							class="input h-8 w-56 font-mono text-xs"
+							placeholder={slug(draft.name) || 'from the name'}
+							autocomplete="off"
+							bind:value={draft.id}
+							aria-label="Id for the new venue"
+						/>
+						<span>— set now or never: it doesn’t change on rename. Lands as Tier C, due a call today. Esc discards.</span>
+					</label>
+					{#if createError}<p class="text-energy">{createError}</p>{/if}
+				</div>
+			</form>
+		{/if}
 
 		{#if visible.length === 0}
 			<p class="rounded-md border border-dashed border-line px-4 py-3 text-sm text-dim">Nothing matches.</p>

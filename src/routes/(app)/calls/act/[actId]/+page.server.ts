@@ -6,6 +6,7 @@ import { CADENCE } from '#lib/build/calls.js';
 import { Invalid, failureMessage, slug, text } from '#lib/server/forms.js';
 import { claimFor } from '#lib/provenance.js';
 import { lineupTransfers } from '#lib/server/provenance.js';
+import { createVenue } from '#lib/server/venues.js';
 import { kampalaToday, nextMonday } from '#lib/build/week.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -81,12 +82,7 @@ export const actions: Actions = {
 				for (const g of gigs) {
 					// Venue: an existing one by name, or added here — they often play rooms the register hasn't heard of.
 					let venue = await tx.venue.findFirst({ where: { name: { equals: g.venue, mode: 'insensitive' } }, select: { id: true } });
-					if (!venue) {
-						let id = slug(g.venue);
-						if (!id) throw new Invalid('The venue needs a name with letters in it.');
-						if (await tx.venue.findUnique({ where: { id } })) id = `${id}-${Date.now().toString(36)}`;
-						venue = await tx.venue.create({ data: { id, name: g.venue }, select: { id: true } });
-					}
+					if (!venue) venue = await createVenue(tx, { name: g.venue });
 					if (await tx.occurrence.findUnique({ where: { venueId_date_eventName: { venueId: venue.id, date: asDate(g.date), eventName: g.eventName } } }))
 						throw new Invalid(`${g.eventName} at ${g.venue} on ${g.date} is already in the register.`);
 					const lineup = (g.billing || act.name).split(',').map((n) => n.trim()).filter(Boolean);

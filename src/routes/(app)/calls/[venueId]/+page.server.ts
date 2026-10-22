@@ -131,8 +131,9 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		mode: occurrenceId ? 'dated' : residencyId ? 'standing' : 'none',
 		residencyId: residencyId ?? venue.residencies.find((r) => !r.startTime)?.id ?? venue.residencies[0]?.id ?? null,
 		occurrenceId: occurrenceId ?? 'new',
-		// A standing night is a monthly sweep; a dated night is this week's problem.
-		tier: CADENCE.some((c) => c.key === tier) ? tier : occurrenceId ? 'C' : 'A',
+		// A standing night is a monthly sweep; a dated night is this week's problem;
+		// a call about no night keeps the venue's own tier (C for a new one).
+		tier: CADENCE.some((c) => c.key === tier) ? tier : occurrenceId ? 'C' : residencyId ? 'A' : (venue.tier ?? 'A'),
 		// Open reminders for this venue and its nights — in the sidebar while you're on the phone.
 		reminders: await reminders({ venue: venue.id }, today)
 	};
@@ -235,6 +236,8 @@ export const actions: Actions = {
 						...(f.has('phone') && { whatsapp: f.get('whatsapp') === 'on' }),
 						...(f.has('bestTime') && { bestTimeToReach: text(f, 'bestTime') }),
 						...(callee === 'venue' && { nextContactDue: nextCall }),
+						// The cadence chosen applies only to a call that reached them.
+						...(reached && callee === 'venue' && { tier: cadence.key }),
 						...(reached && callee === 'venue' && { lastContacted: now }),
 						// Question 6 is about the room, so only the venue's answer counts.
 						...(reached && callee === 'venue' && test && { conversationTest: test, provisionalRegister: register }),

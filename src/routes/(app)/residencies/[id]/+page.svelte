@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
+	import ThisWeek from '#lib/components/ThisWeek.svelte';
 	import Reminders from '#lib/components/Reminders.svelte';
 	import CallPanel from '#lib/components/CallPanel.svelte';
 	import VouchPanel from '#lib/components/VouchPanel.svelte';
@@ -120,6 +121,7 @@
 				<button name="intent" value="reactivate" class="btn h-11">Reactivate</button>
 			{/if}
 			<button class="btn-primary h-11" disabled={saving}>{saving ? 'Saving…' : 'Save the rule'}</button>
+			<span class="text-sm"><ThisWeek /></span>
 		</div>
 	</header>
 

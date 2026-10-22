@@ -7,6 +7,7 @@ import { Invalid, failureMessage, money, oneOf, phone, slug, text, time } from '
 import { organiserFrom, organiserOptions } from '#lib/server/organisers.js';
 import { claimFor, sourceAfter } from '#lib/provenance.js';
 import { lineupTransfers } from '#lib/server/provenance.js';
+import { createVenue } from '#lib/server/venues.js';
 import type { Source } from '#lib/server/prisma.js';
 import { asDate, kampalaDate } from '#lib/server/register.js';
 import { PROVENANCE, REPEATS, isoDay, mondayOf, nextOn, type Repeat } from '#lib/build/add.js';
@@ -94,13 +95,7 @@ export const actions: Actions = {
 				} else {
 					const name = text(f, 'new_name');
 					if (!name) throw new Invalid('Pick the venue, or add it — nothing can be saved without one.');
-					let id = slug(name);
-					if (!id) throw new Invalid('The venue needs a name with letters in it.');
-					if (await tx.venue.findUnique({ where: { id } })) id = `${id}-${Date.now().toString(36)}`;
-					await tx.venue.create({
-						data: { id, name, location: text(f, 'new_location'), zoneName: text(f, 'new_zone') }
-					});
-					venueId = id;
+					venueId = (await createVenue(tx, { name, location: text(f, 'new_location'), zoneName: text(f, 'new_zone') })).id;
 				}
 				if (prov.key === 'attended') {
 					await tx.venue.update({ where: { id: venueId }, data: { lastAttended: now } });
