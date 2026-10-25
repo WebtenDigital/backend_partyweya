@@ -41,6 +41,7 @@ export interface VenueIn {
 	zone: string | null;
 	division: string | null;
 	phone: string | null;
+	paidClient?: boolean; // Rule 6: a paid client's place in a published order must be deliberate
 }
 
 export interface ResidencyIn {

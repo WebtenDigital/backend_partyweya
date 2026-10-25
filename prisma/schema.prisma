@@ -321,9 +321,10 @@ model Residency {
   notes         String? // internal — never public
   lineup        String[]   @default([]) // the billing as advertised, in order — authoritative; resolved to Acts by name
 
-  occurrences Occurrence[]
-  perks       Perk[]
-  reminders   Reminder[]
+  occurrences  Occurrence[]
+  perks        Perk[]
+  reminders    Reminder[]
+  publications Publication[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -404,19 +405,58 @@ model Occurrence {
 //  never by hand. Cheap now, annoying to backfill later.
 // ─────────────────────────────────────────────────────────────────────
 
+//  An entry is a dated row OR a standing night on a date — exactly one of
+//  occurrenceId / residencyId (a CHECK in SQL). A standing night has no
+//  Occurrence row, and publishing must never create one: that would edit
+//  the register. A table, not a field: an entry that travels in Monday's
+//  round-up and again in Wednesday's cut has two rows, not one overwritten.
 model Publication {
-  id           String     @id @default(cuid()) // the one table the app creates,
-  //                                              so a generated id is right here
-  occurrence   Occurrence @relation(fields: [occurrenceId], references: [id])
-  occurrenceId String
+  id           String      @id @default(cuid()) // the one table the app creates,
+  //                                               so a generated id is right here
+  occurrence   Occurrence? @relation(fields: [occurrenceId], references: [id], onDelete: Restrict)
+  occurrenceId String?
+  residency    Residency?  @relation(fields: [residencyId], references: [id], onDelete: Restrict)
+  residencyId  String?
+  nightDate    DateTime    @db.Date // the night the entry is about
 
   postType PostType
   platform String //    instagram | tiktok | snapchat
   postedAt DateTime
   postUrl  String?
+  position Int? //      slide number in the post: item one is seen ~22× more than the last
+  line     String? //   what was said about the night, as written — never generated
 
   @@index([postedAt])
   @@index([postType])
+  @@index([occurrenceId])
+  @@index([residencyId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  ROUNDUP — the working draft for a week's round-up: the order decided,
+//  the line written per entry, the caption and the TikTok cut. Not a
+//  publication: building is not publishing. "Published" copies each line
+//  into a Publication row. Internal; never public.
+// ─────────────────────────────────────────────────────────────────────
+
+model Roundup {
+  week      DateTime @id @db.Date // the build week's Monday
+  intro     String   @default("")
+  pointer   String   @default("") // the Rule F6 line naming all three moods
+  tags      String[] @default([]) // the seven editable tag slots, in order
+  tiktok    String[] @default([]) // entry keys proposed / chosen for the reduced cut
+  entries   RoundupEntry[]
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model RoundupEntry {
+  roundup  Roundup  @relation(fields: [week], references: [week], onDelete: Cascade)
+  week     DateTime @db.Date
+  key      String //  the week row's key: an occurrence id, or "residencyId|date"
+  line     String   @default("") // typed by hand; nothing on the screen writes it but you
+  position Int
+
+  @@id([week, key])
 }
 
 // ─────────────────────────────────────────────────────────────────────

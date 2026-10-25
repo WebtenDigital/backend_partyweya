@@ -120,13 +120,12 @@
 			<a href="/venues" class="btn">Venues</a>
 			<a href="/acts" class="btn">Acts</a>
 			<a href="/add" class="btn" title="Add to the register">+ Add</a>
-			<button
-				class="btn-primary"
-				disabled
-				title={data.gate.publishable ? 'The round-up step is not built yet' : 'The Sunday gate has not passed'}
-			>
-				Build round-up
-			</button>
+			<!-- The gate is not advisory: no pass, no button. Building writes nothing — publishing is a later step. -->
+			{#if data.gate.publishable}
+				<a href="/build/roundup?week={data.week}" class="btn-primary inline-flex items-center">Build round-up</a>
+			{:else}
+				<button class="btn-primary" disabled title="The Sunday gate has not passed">Build round-up</button>
+			{/if}
 			<form method="POST" action="/login?/logout">
 				<button class="btn text-dim">Log out</button>
 			</form>

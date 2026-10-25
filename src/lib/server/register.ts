@@ -37,12 +37,14 @@ type VenueRow = {
 	name: string;
 	phones: string[];
 	verifiedPhone: string | null;
+	paidClient: boolean;
 	zone: { name: string; division: string } | null;
 };
 const venueIn = (v: VenueRow): VenueIn => ({
 	id: v.id,
 	name: v.name,
 	phone: dialNumber(v),
+	paidClient: v.paidClient,
 	zone: v.zone?.name ?? null,
 	division: v.zone?.division ?? null
 });
