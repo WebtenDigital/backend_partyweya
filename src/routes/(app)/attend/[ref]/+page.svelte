@@ -80,7 +80,7 @@
 			saving = false;
 		};
 	}}
-	class="min-h-screen bg-ink pb-28 text-fg"
+	class="min-h-screen bg-ink pb-8 text-fg"
 >
 	<header class="flex items-center gap-4 border-b border-line px-4 py-4 sm:px-6">
 		<HomeLogo week={data.currentWeek} />
@@ -245,7 +245,9 @@
 		</section>
 	</main>
 
-	<footer class="fixed inset-x-0 bottom-0 border-t border-line bg-panel/95 px-4 py-3 backdrop-blur">
+	<!-- In the page flow, not fixed: every field is above it, so one pass reaches it,
+	     and a fixed bar costs a small screen its height and fights the keyboard. -->
+	<footer class="px-4 pt-1">
 		<div class="mx-auto max-w-xl">
 			{#if form?.error}<p class="mb-2 text-sm text-energy">{form.error}</p>{/if}
 			<button class="btn-primary h-12 w-full" disabled={saving || future}>{saving ? 'Saving…' : 'Record the visit'}</button>

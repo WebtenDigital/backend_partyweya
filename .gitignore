@@ -27,6 +27,11 @@ vite.config.ts.timestamp-*
 # Prisma
 /src/generated
 
-# Register exports (internal: contacts, notes)
-/data
+# Register exports (internal: contacts, phone numbers, notes) — never in git.
+/data/*
+# …except the reference files with nothing personal in them: the area → zone
+# map (187 areas, 24 zones, from the KCCA parish registers) and the import's
+# place matcher. Both were lost once when they lived only outside the repo.
+!/data/partyweya_area_zone_map.csv
+!/data/place_matcher.py
 
