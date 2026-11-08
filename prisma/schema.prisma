@@ -208,10 +208,14 @@ model Venue {
   bestTimeToReach String? //   nightlife staff are not morning people
 
   conversationTest    ConversationTest? // the call script's register diagnostic
-  provisionalRegister Register? //         derived from conversationTest
+  conversationTestAt  DateTime? //         when question 6 was last answered, by any screen
+  provisionalRegister Register? //         derived from conversationTest — the GUESS
+  register            Register? //         the JUDGED register: written only by a visit write-up
+  registerJudgedAt    DateTime? //         set with it; a phone answer never touches either
 
   lastAttended DateTime? // null = PartyWeya has never been. The basis of VETTED.
-  clearsF2     Boolean? //  null = unknown, which is the honest default
+  clearsF2     Boolean? //  DEAD — the verdict is per night now (Residency / Occurrence).
+  //                        Unread and unwritten; dropped in the contract step.
   paidClient   Boolean   @default(false) // keeps concentration visible (Rule 6)
 
   // Facts that don't change by night: would it differ on their Tuesday and their Saturday?
@@ -222,6 +226,13 @@ model Venue {
   lastContacted  DateTime?
   nextContactDue DateTime? // set by the cadence tier — drives "who is due this week"
   tier           Tier? //    the cadence; C for a venue added and never called
+
+  // Discovery: a venue with no night on file is asked what it runs. It leaves
+  // that list when a night is recorded — never just because someone answered.
+  noProgramme     Boolean   @default(false) // reached, and genuinely runs nothing: an answer, not a failure
+  noProgrammeAt   DateTime?
+  contactAttempts Int       @default(0) //    no-answers in a row; 0 on any contact. At 4: unreachable
+  lastAttemptAt   DateTime? //                the last no-answer: discovery tries again the next working day
   notes          String?
 
   residencies Residency[]
@@ -311,11 +322,16 @@ model Residency {
   stoppedAt     DateTime? // when
 
   lastConfirmed DateTime? // drives the monthly sweep
+  // Our FIRST confirmation — set once by a trigger whenever lastConfirmed is
+  // first written, never overwritten. Three months of our own confirmations is
+  // what makes a night tier A even when nobody asked how long it has run.
+  firstConfirmedAt DateTime?
 
   // When we were last in the room — the night attended, not the day it was logged.
   // Not lastConfirmed (when we last heard it's on). Rule F5 ages a vouch out from here.
   attendedAt DateTime? @db.Date
   attendedBy String? //  initials, like confirmedBy — who stood in the room
+  clearsF2   Boolean? // Rule F2, judged in the room: gates RECOMMENDATION, not publication
   claimType     ClaimType? // what PartyWeya may say about the standing night
   source        Source? //    who confirmed it; only ATTENDED can carry VETTED
   notes         String? // internal — never public
@@ -325,6 +341,7 @@ model Residency {
   perks        Perk[]
   reminders    Reminder[]
   publications Publication[]
+  visits       Visit[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -386,9 +403,26 @@ model Occurrence {
   attendedAt DateTime? @db.Date
   attendedBy String? //  initials, like confirmedBy — who stood in the room
 
+  // ── the visit write-up (/attend), on the night actually attended ──
+  clearsF2          Boolean? //          Rule F2 for THIS night; gates recommendation
+  predictedRegister Register? //         snapshot: the venue's guess as it stood at the visit
+  predictedFrom     ConversationTest? // snapshot: the raw question-6 answer behind it
+  observedConversation ConversationTest? // the room's answer, observed — optional; never written to Venue
+  arrivedAt         String? //           "HH:MM", like startTime
+  leftAt            String?
+  actualStartTime   String? //           what was true, beside what the register said
+  actualPrice       Int?
+  actualLineup      String[]  @default([])
+  mismatches        String[]  @default([]) // "start: said 21:30, opened 23:00" — plain, no score
+  vettedNote        String? //           the comparative sentence, written that night
+  costEntry         Int?
+  costTransport     Int?
+  costSpend         Int?
+
   publications Publication[]
   perks        Perk[]
   reminders    Reminder[]
+  visits       Visit[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -430,6 +464,30 @@ model Publication {
   @@index([postType])
   @@index([occurrenceId])
   @@index([residencyId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  VISIT — the week's planned attendance: an INTENTION, pointing at a night
+//  (a standing night, or a dated one — exactly one, a CHECK in SQL) and the
+//  date. Not an Occurrence: buildWeek reads any Occurrence on a standing
+//  night's date as an override, so a placeholder would make the night
+//  unpublishable and planning would block the build. "Written up" is derived
+//  — an Occurrence for that night and date with an attendance on it — never
+//  stored. An unplanned night out is written up with no Visit at all.
+// ─────────────────────────────────────────────────────────────────────
+
+model Visit {
+  id           String      @id @default(cuid())
+  residency    Residency?  @relation(fields: [residencyId], references: [id], onDelete: Cascade)
+  residencyId  String?
+  occurrence   Occurrence? @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
+  occurrenceId String?
+  date         DateTime    @db.Date // the night planned
+  register     Register? //            the register the rail was pointing at
+  plannedAt    DateTime    @default(now())
+  dismissedAt  DateTime? //            "it never happened" — a normal outcome
+
+  @@index([date])
 }
 
 // ─────────────────────────────────────────────────────────────────────
