@@ -10,7 +10,7 @@ import type { Tx } from './db.js';
 import { Invalid } from './forms.js';
 import { asDate, isoDate } from './register.js';
 import { isoDay, mondayOf } from '../build/add.js';
-import { addDays } from '../build/week.js';
+import { addDays, kampalaToday } from '../build/week.js';
 
 export interface PlannedVisit {
 	id: string;
@@ -85,18 +85,31 @@ async function nightOn(db: Tx, ref: string, date: string) {
 	return { residencyId: null, occurrenceId: o.id };
 }
 
+/**
+ * One visit a week, keyed off the VISIT'S OWN DATE (its ISO week) — not the
+ * build window it was planned from, or two windows could put two visits in one
+ * calendar week. A night already past can't be planned; earlier today still can.
+ */
+async function guard(db: Tx, date: string, today: string, except?: string) {
+	if (date < today) throw new Invalid('That night has already passed — write it up from Visits instead, if you went.');
+	const week = mondayOf(date);
+	const standing = await db.visit.count({
+		where: { dismissedAt: null, date: { gte: asDate(week), lte: asDate(addDays(week, 6)) }, ...(except && { id: { not: except } }) }
+	});
+	if (standing) throw new Invalid('A visit is already planned that week — change it or dismiss it first.');
+}
+
 /** Plan the week's visit. One a week: a second is refused while one stands. */
-export async function planVisit(db: Tx, input: { ref: string; date: string; register: Register | null }) {
+export async function planVisit(db: Tx, input: { ref: string; date: string; register: Register | null }, today = kampalaToday()) {
 	const night = await nightOn(db, input.ref, input.date);
-	const week = mondayOf(input.date);
-	if (await db.visit.count({ where: { dismissedAt: null, date: { gte: asDate(week), lte: asDate(addDays(week, 6)) } } }))
-		throw new Invalid('A visit is already planned that week — change it or dismiss it first.');
+	await guard(db, input.date, today);
 	return db.visit.create({ data: { ...night, date: asDate(input.date), register: input.register } });
 }
 
 /** Point the standing plan at a different night — the same visit, not a second one. */
-export async function changeVisit(db: Tx, id: string, input: { ref: string; date: string }) {
+export async function changeVisit(db: Tx, id: string, input: { ref: string; date: string }, today = kampalaToday()) {
 	const night = await nightOn(db, input.ref, input.date);
+	await guard(db, input.date, today, id);
 	return db.visit.update({ where: { id }, data: { ...night, date: asDate(input.date) } });
 }
 

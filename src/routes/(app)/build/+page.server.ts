@@ -70,9 +70,10 @@ export const load: PageServerLoad = async ({ url }) => {
 		// The week's one planned visit, if it stands — so the rail shows the decision,
 		// not a fresh list as though nothing had been decided.
 		visit: await weekVisit(week),
-		// The target register's nights this week, to plan (or re-point) the visit at.
+		// The target register's nights this week still ahead (today included — you can
+		// decide at 6pm to go at 9), to plan or re-point the visit at. A past week offers none.
 		visitNights: rows
-			.filter((r) => r.register === attendance.target)
+			.filter((r) => r.register === attendance.target && r.date >= today)
 			.map((r) => ({
 				ref: r.kind === 'STANDING' ? r.residencyId! : r.key,
 				date: r.date,

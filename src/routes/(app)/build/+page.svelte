@@ -404,8 +404,10 @@
 								</li>
 							{/each}
 						</ul>
+					{:else if data.weekEnd < data.today}
+						<p class="text-dim">This build week is over — there’s nothing left in it to plan a visit at.</p>
 					{:else}
-						<p class="text-dim">No {REGISTER_LABEL[weakest]} night runs this week to plan a visit at.</p>
+						<p class="text-dim">No {REGISTER_LABEL[weakest]} night left this week to plan a visit at.</p>
 					{/if}
 				</div>
 

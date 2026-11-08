@@ -74,7 +74,7 @@ test('the badge counts a past, undismissed, unwritten visit — and drops to zer
 	rolledBack(async (tx) => {
 		const { r } = await venueWithNight(tx, 'badge');
 		const date = lastOn(6);
-		const visit = await planVisit(tx, { ref: r.id, date, register: 'CHILL' });
+		const visit = await planVisit(tx, { ref: r.id, date, register: 'CHILL' }, date); // planned back when it was ahead
 		assert.equal(mine(await visitsDue(today, tx), visit.id), true);
 		await recordVisit(tx, writeUp(r.id, date));
 		assert.equal(mine(await visitsDue(today, tx), visit.id), false);
@@ -92,7 +92,7 @@ test('a dismissed visit never appears in the badge or on the rail', () =>
 	rolledBack(async (tx) => {
 		const { r } = await venueWithNight(tx, 'dismissed');
 		const date = lastOn(6);
-		const visit = await planVisit(tx, { ref: r.id, date, register: 'CHILL' });
+		const visit = await planVisit(tx, { ref: r.id, date, register: 'CHILL' }, date); // planned back when it was ahead
 		await dismissVisit(tx, visit.id);
 		assert.equal(mine(await visitsDue(today, tx), visit.id), false);
 		assert.equal(await weekVisit(mondayOf(date), tx), null);
@@ -139,4 +139,23 @@ test('observedConversation never touches the venue’s conversationTest or provi
 test('a visit points at exactly one night: the database refuses both or neither', () =>
 	rolledBack(async (tx) => {
 		await assert.rejects(tx.visit.create({ data: { date: new Date(today) } }), /visit_one_night/);
+	}));
+
+test('fix 1: a night that has already passed cannot be planned — earlier today still can', () =>
+	rolledBack(async (tx) => {
+		const { r } = await venueWithNight(tx, 'past', isoDay(addDays(today, -1)));
+		await assert.rejects(planVisit(tx, { ref: r.id, date: addDays(today, -1), register: 'CHILL' }), /already passed/);
+		const { r: tonight } = await venueWithNight(tx, 'tonight', isoDay(today));
+		await planVisit(tx, { ref: tonight.id, date: today, register: 'CHILL' });
+	}));
+
+test('fix 2: one a week keys off the visit’s own date — re-pointing into a week that has one is refused', () =>
+	rolledBack(async (tx) => {
+		const { r: a } = await venueWithNight(tx, 'week-a', 6);
+		const { r: b } = await venueWithNight(tx, 'week-b', 6);
+		const later = addDays(next, 7); // the week after the build week
+		await planVisit(tx, { ref: a.id, date: addDays(next, 5), register: 'CHILL' }); // planned from one window
+		const other = await planVisit(tx, { ref: b.id, date: addDays(later, 5), register: 'CHILL' }); // and from the next
+		await assert.rejects(changeVisit(tx, other.id, { ref: b.id, date: addDays(next, 5) }), /already planned that week/);
+		await changeVisit(tx, other.id, { ref: a.id, date: addDays(later, 5) }); // within its own week: fine
 	}));
