@@ -28,6 +28,6 @@
 			<p class="text-dim">Never attended — no vouch on this night.</p>
 		{/if}
 	</div>
-	<a href="/attend/{ref}" class="btn mt-3 flex h-11 items-center justify-center">I was here →</a>
+	<a href="/attend/{ref}" class="btn mt-3 flex h-11 items-center justify-center">Write up the visit →</a>
 	<p class="mt-2 text-xs text-dim">A call can’t renew a vouch: it confirms the night runs, not what the room is like.</p>
 </section>

@@ -233,6 +233,33 @@
 				</div>
 			</form>
 
+			{#if data.mismatches.length || data.register.judged || data.register.guess || data.readings.length}
+				<section class="panel space-y-2 text-sm">
+					<h2 class="panel-title">From visits</h2>
+					<p class="text-xs">
+						Register:
+						{#if data.register.judged}<strong>judged {data.register.judged.replace('_', '-').toLowerCase()}</strong>{data.register.judgedAt ? ` (${shortDate(data.register.judgedAt)})` : ''}{:else}<span class="text-dim">never judged in the room</span>{/if}
+						{#if data.register.guess}<span class="text-dim"> · guess from question 6: {data.register.guess.replace('_', '-').toLowerCase()}{data.register.guessAt ? ` (${shortDate(data.register.guessAt)})` : ''}</span>{/if}
+					</p>
+					{#if data.readings.length}
+						<p class="font-mono text-[10px] tracking-wider text-social uppercase">Question 6, against the room</p>
+						<ul class="space-y-0.5 text-xs">
+							{#each data.readings as r (r.id)}
+								<li class={r.reading!.verdict === 'held' ? 'text-dim' : ''}><span class="font-mono text-dim">{shortDate(r.date)}</span> · {r.eventName} · {r.reading!.text}</li>
+							{/each}
+						</ul>
+					{/if}
+					{#if data.mismatches.length}
+						<p class="font-mono text-[10px] tracking-wider text-social uppercase">What the register said, and what was true</p>
+						<ul class="space-y-0.5 text-xs">
+							{#each data.mismatches as m (m.id)}
+								{#each m.mismatches as line (line)}<li><span class="font-mono text-dim">{shortDate(m.date)}</span> · {m.eventName} · {line}</li>{/each}
+							{/each}
+						</ul>
+					{/if}
+				</section>
+			{/if}
+
 			<section class="panel">
 				<h2 class="panel-title mb-3">Standing nights <span class="font-normal text-dim normal-case">— open one to edit it and its offers</span></h2>
 				{#if data.residencies.length === 0}<p class="text-sm text-dim">None.</p>{/if}

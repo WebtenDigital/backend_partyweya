@@ -5,6 +5,7 @@ import { asDate, isoDate, kampalaDate } from '#lib/server/register.js';
 import { kampalaToday } from '#lib/build/week.js';
 import { areaVocabulary, saveVenue } from '#lib/server/venues.js';
 import { dialNumber } from '#lib/phones.js';
+import { readPrediction } from '#lib/build/prediction.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -47,7 +48,38 @@ export const load: PageServerLoad = async ({ params }) => {
 			updatedAt: v.updatedAt.toISOString()
 		},
 		residencies: v.residencies,
-		occurrences: v.occurrences.map((o) => ({ ...o, date: isoDate(o.date) }))
+		occurrences: v.occurrences.map((o) => ({ ...o, date: isoDate(o.date) })),
+		// What visits found different from what the register said — plain lines, never a
+		// score (one visit is n=1). The next caller can raise them on the phone.
+		mismatches: (
+			await prisma.occurrence.findMany({
+				where: { venueId: v.id, mismatches: { isEmpty: false } },
+				orderBy: { date: 'desc' },
+				select: { id: true, date: true, eventName: true, mismatches: true }
+			})
+		).map((o) => ({ ...o, date: isoDate(o.date) })),
+		// The judged register beside the phone guess — never one written over the other.
+		register: {
+			judged: v.register,
+			judgedAt: kampalaDate(v.registerJudgedAt),
+			guess: v.provisionalRegister,
+			guessAt: kampalaDate(v.conversationTestAt)
+		},
+		// Each visit's reading of question 6's prediction: held, or which way it missed.
+		readings: (
+			await prisma.occurrence.findMany({
+				where: { venueId: v.id, attendedAt: { not: null }, predictedRegister: { not: null } },
+				orderBy: { date: 'desc' },
+				select: { id: true, date: true, eventName: true, predictedRegister: true, predictedFrom: true, observedConversation: true, register: true }
+			})
+		)
+			.map((o) => ({
+				id: o.id,
+				date: isoDate(o.date),
+				eventName: o.eventName,
+				reading: readPrediction({ predictedRegister: o.predictedRegister, predictedFrom: o.predictedFrom, judged: o.register, observed: o.observedConversation })
+			}))
+			.filter((r) => r.reading)
 	};
 };
 

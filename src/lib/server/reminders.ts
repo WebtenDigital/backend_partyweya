@@ -6,6 +6,7 @@
 
 import { Prisma } from '../../generated/prisma/client';
 import { prisma } from './prisma.js';
+import type { Tx } from './db.js';
 import { kampalaToday } from '#lib/build/week.js';
 
 export type SubjectKind = 'venue' | 'act' | 'organiser' | 'residency' | 'occurrence';
@@ -58,7 +59,7 @@ export type ReminderFilter = {
 	done?: boolean; //  default: open only
 };
 
-export async function reminders(filter: ReminderFilter = {}, today = kampalaToday()): Promise<ReminderRow[]> {
+export async function reminders(filter: ReminderFilter = {}, today = kampalaToday(), db: Tx = prisma): Promise<ReminderRow[]> {
 	const where: Prisma.Sql[] = [filter.done ? Prisma.sql`r."doneAt" IS NOT NULL` : Prisma.sql`r."doneAt" IS NULL`];
 	if (filter.venue) where.push(Prisma.sql`(r."venueId" = ${filter.venue} OR res."venueId" = ${filter.venue} OR o."venueId" = ${filter.venue})`);
 	if (filter.act) where.push(Prisma.sql`r."actId" = ${filter.act}`);
@@ -70,7 +71,7 @@ export async function reminders(filter: ReminderFilter = {}, today = kampalaToda
 			Prisma.sql`(r."residencyId" = ANY (${filter.ids.residencies}::text[]) OR r."occurrenceId" = ANY (${filter.ids.occurrences}::text[]))`
 		);
 
-	const rows = await prisma.$queryRaw<Raw[]>`
+	const rows = await db.$queryRaw<Raw[]>`
 		WITH x AS (
 			SELECT r.*,
 			       COALESCE(r."venueId", res."venueId", o."venueId") AS "atVenue",

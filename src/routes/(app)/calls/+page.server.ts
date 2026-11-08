@@ -13,7 +13,7 @@ export const load: PageServerLoad = async ({ url, cookies }) => {
 	const week = url.searchParams.get('week');
 	if (!isWeek(week)) redirect(307, `/calls?week=${nextMonday(today)}`);
 
-	const [{ queue, gate, vouches, reminders: open }, venueCount, numbers, subjectList] = await Promise.all([
+	const [{ queue, gate, reminders: open, discovery }, venueCount, numbers, subjectList] = await Promise.all([
 		loadOwed(week, today),
 		prisma.venue.count(),
 		prisma.venue.count({ where: { phones: { isEmpty: false } } }),
@@ -28,8 +28,8 @@ export const load: PageServerLoad = async ({ url, cookies }) => {
 		week,
 		today,
 		queue,
+		discovery,
 		gate,
-		vouches,
 		register: { venues: venueCount, numbers },
 		reminders: open,
 		health,

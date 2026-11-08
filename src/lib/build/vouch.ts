@@ -37,8 +37,9 @@ export function vouchExpiry(attendedAt: string, today: string) {
 	return `expired ${ago === 1 ? 'yesterday' : `${ago} days ago`}`;
 }
 
-// ── VOUCHES RUNNING OUT, on the call round ──────────────────────────────
+// ── VOUCHES RUNNING OUT, under the Sunday Build's register balance ───────
 // Not calls: a vouch is a judgement about a room, so the only fix is a visit.
+// Never on the call round — a call confirms a night runs; it can't refresh a vouch.
 
 export interface VouchItem {
 	ref: string; // the residency or occurrence vouched for
@@ -58,14 +59,12 @@ const REGISTERS: Register[] = ['CHILL', 'SOCIAL', 'HIGH_ENERGY'];
 
 const refOf = (r: Row) => (r.kind === 'STANDING' ? r.residencyId! : r.key);
 
+/** The vouches running out in a build week: the evidence and the action, never the ranking. */
 export function vouchRound(rows: Row[], week: string, today: string) {
 	const seen = new Set<string>();
 	const items: VouchItem[] = [];
-	const live = new Map<Register, Set<string>>(REGISTERS.map((g) => [g, new Set()]));
 	for (const r of rows) {
 		const state = vouchState(r.attendedAt, week);
-		if (state === 'NONE') continue;
-		if ((state === 'LIVE' || state === 'EXPIRING') && r.register) live.get(r.register)!.add(refOf(r));
 		if ((state === 'EXPIRING' || state === 'EXPIRED') && !seen.has(refOf(r))) {
 			seen.add(refOf(r));
 			items.push({
@@ -83,15 +82,60 @@ export function vouchRound(rows: Row[], week: string, today: string) {
 		}
 	}
 	items.sort((a, b) => Number(b.state === 'EXPIRED') - Number(a.state === 'EXPIRED') || a.attendedAt.localeCompare(b.attendedAt));
+	return { items };
+}
 
-	// Rule F4's reactive default: the next night out goes to the mood furthest behind.
-	// Ties break toward the register with fewest entries in the week overall.
-	const entries = (g: Register) => rows.filter((r) => r.register === g).length;
-	const [next] = [...REGISTERS].sort((a, b) => live.get(a)!.size - live.get(b)!.size || entries(a) - entries(b));
-	const count = live.get(next)!.size;
-	const target =
-		count === 0
-			? `No live ${LABEL[next]} vouch. Your next night out should be ${LABEL[next]}.`
-			: `Fewest live vouches: ${LABEL[next]} (${count}). Your next night out should be ${LABEL[next]}.`;
-	return { items, target, next };
+// ── WHERE FRIDAY'S ATTENDANCE GOES ──────────────────────────────────────
+// Rule F4 as written: the attendance defaults to whichever mood is furthest
+// below its floor, or has gone longest without a fresh entry. Count leads;
+// freshness breaks ties. The one place this is decided.
+//
+// Live vouches are NOT in it. They decide whether the Sunday gate passes, not
+// which register is starving: ranked on vouches, three registers at zero live
+// would tie and send the week's one attendance to the loudest mood in it.
+
+export interface RegisterNeed {
+	register: Register;
+	count: number; //                publishable entries this week — the bars, and the gate's count
+	lastAttended: string | null; //  the latest attendedAt among the register's nights this week
+	daysSince: number | null; //     null = never attended: sorts worst
+}
+
+export type NeedReason = 'absent' | 'fewest' | 'stale';
+
+export function attendanceTarget(rows: Row[], today: string) {
+	const registers: RegisterNeed[] = REGISTERS.map((register) => {
+		const lastAttended =
+			rows
+				.filter((r) => r.register === register && r.attendedAt)
+				.map((r) => r.attendedAt!)
+				.sort()
+				.at(-1) ?? null;
+		return {
+			register,
+			count: rows.filter((r) => r.state === 'publishable' && r.register === register).length,
+			lastAttended,
+			daysSince: lastAttended ? daysBetween(lastAttended, today) : null
+		};
+	});
+	const since = (n: RegisterNeed) => n.daysSince ?? Infinity;
+	// 1. none at all (the gate fails on mood balance)  2. fewest  3. longest since a fresh entry
+	const ranked = [...registers].sort((a, b) => a.count - b.count || (since(a) === since(b) ? 0 : since(a) > since(b) ? -1 : 1));
+	const [first, second] = ranked;
+	const reason: NeedReason = first.count === 0 ? 'absent' : second.count === first.count ? 'stale' : 'fewest';
+	return { registers, ranked, target: first.register, reason };
+}
+
+const ago = (n: RegisterNeed) => (n.daysSince == null ? 'never attended' : `last attended ${n.daysSince === 1 ? 'yesterday' : `${n.daysSince} days ago`}`);
+const nights = (n: number) => `${n} night${n === 1 ? '' : 's'}`;
+
+/** The verdict, naming the register and the reason. */
+export function attendanceVerdict({ ranked, target, reason }: ReturnType<typeof attendanceTarget>) {
+	const [first, second] = ranked;
+	const go = `Point Friday’s attendance at ${LABEL[target]}.`;
+	if (reason === 'absent')
+		return `No ${LABEL[target]} entries this week — the gate fails on mood balance (Rule F4) until there is one. That is a gate failure, not a preference. ${go}`;
+	if (reason === 'stale')
+		return `${LABEL[first.register]} and ${LABEL[second.register]} tie on ${nights(first.count)}; ${LABEL[target]} has gone longer without a fresh entry — ${ago(first)}. ${go}`;
+	return `${LABEL[target]} is thinnest — ${nights(first.count)}, ${ago(first)}. ${go}`;
 }

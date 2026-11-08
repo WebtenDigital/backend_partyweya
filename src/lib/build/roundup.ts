@@ -5,7 +5,7 @@
 // from the register and an empty line typed by hand — that line is the
 // comparative judgement Rule F2 protects, and a template would forge it.
 
-import { addDays, dayHeading, shillings, shortDate, type Register, type Row } from './week.js';
+import { addDays, dayHeading, recommendable, shillings, shortDate, type Register, type Row } from './week.js';
 
 export const REGISTERS: Register[] = ['CHILL', 'SOCIAL', 'HIGH_ENERGY'];
 export const REGISTER_LABEL: Record<Register, string> = { CHILL: 'Chill', SOCIAL: 'Social', HIGH_ENERGY: 'High-Energy' };
@@ -49,6 +49,7 @@ export interface Entry {
 	perk: string | null;
 	claimType: string | null;
 	attendedAt: string | null;
+	clearsF2?: boolean | null; // a doesn't-clear night is listed, never proposed as the strongest; absent = not judged
 }
 
 export function entryOf(r: Row): Entry {
@@ -68,7 +69,8 @@ export function entryOf(r: Row): Entry {
 		register: r.register!,
 		perk: p ? [p.label, p.condition].filter(Boolean).join(' · ') : null,
 		claimType: r.claimType,
-		attendedAt: r.attendedAt
+		attendedAt: r.attendedAt,
+		clearsF2: r.clearsF2
 	};
 }
 
@@ -131,15 +133,18 @@ const STRENGTH: Record<string, number> = { VETTED: 3, TRANSFERRED: 2, FACTUAL: 1
 
 /**
  * The reduced cut: the strongest entry per register, for you to confirm or
- * change. Strongest = the strongest claim (a vouch beats a known act beats a
+ * change. "Strongest" holds a night up as good, so Rule F2 applies: a night
+ * that cleared the gate beats one never judged, and one that didn't clear is
+ * never proposed. Then the strongest claim (a vouch beats a known act beats a
  * listing); ties go to whichever you placed earlier.
  */
 export function proposeTikTok(inOrder: Entry[]): Partial<Record<Register, string>> {
 	const out: Partial<Record<Register, string>> = {};
+	const score = (e: Entry) => (recommendable(e) ? 10 : 0) + (STRENGTH[e.claimType ?? ''] ?? 0);
 	for (const reg of REGISTERS) {
 		const best = inOrder
-			.filter((e) => e.register === reg)
-			.reduce<Entry | null>((b, e) => (!b || (STRENGTH[e.claimType ?? ''] ?? 0) > (STRENGTH[b.claimType ?? ''] ?? 0) ? e : b), null);
+			.filter((e) => e.register === reg && e.clearsF2 !== false)
+			.reduce<Entry | null>((b, e) => (!b || score(e) > score(b) ? e : b), null);
 		if (best) out[reg] = best.key;
 	}
 	return out;

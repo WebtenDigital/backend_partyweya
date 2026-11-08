@@ -1,12 +1,12 @@
 <script lang="ts">
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
+	import Visits from '#lib/components/Visits.svelte';
 	import NewActsPrompt from '#lib/components/NewActsPrompt.svelte';
 	import Reminders from '#lib/components/Reminders.svelte';
 	import { enhance } from '$app/forms';
 	import { GROUPS, SORT_COOKIE, rowDate, type GroupKey, type QueueRow } from '#lib/build/calls.js';
 	import { UNKNOWN_LABEL } from '#lib/build/who.js';
 	import { addDays, daysBetween, shortDate } from '#lib/build/week.js';
-	import { vouchExpires, type VouchItem } from '#lib/build/vouch.js';
 	import { reminderAction } from '#lib/reminders.js';
 	import type { PageProps } from './$types';
 
@@ -38,46 +38,51 @@
 		unclassified: 'text-chill'
 	};
 	const WHY: Record<GroupKey, string> = {
-		'this-week': 'A dated row between today and the end of the build week, missing a time, a price, a register or a confirmation. One call each and it publishes.',
+		'this-week': 'Tier C: a night here has never been confirmed — any standing night, which blocks every window, or a dated row inside this one. Also a standing night the Sunday Build reads as lapsed this week, and a dated row missing a time, price or register. It blocks the build, so it comes first.',
 		'every-week': 'A standing night with no start time. Fixing the rule closes the gap permanently, not just for this week — so these are worth more than their count suggests.',
-		due: 'The venue’s own cadence: when the last call’s tier said to ring again. A venue added from desk research lands here the day it’s added, Tier C — nothing about it has been verified, and nothing else would ever surface it.',
-		sweep: 'A standing night not confirmed within the monthly sweep. One call a month, spread across four weeks rather than done in one sitting.',
+		due: 'The tier its nights give it, worked out every time, never stored: A (confirmed, held 3+ months) a month after the last confirmation — the monthly sweep, which spreads itself across the weeks — and B (held under 3) a week after.',
+		sweep: 'A night attended but not called since. Being there confirms it ran, not that next week is on — only a call does.',
 		unclassified: 'Question 6 has never been asked here. Costs nothing to add to a call already happening, and it is the only thing that can produce a Chill night.'
 	};
 
+	// A venue that can't be dialled at all is not a call, it's desk research: it leaves
+	// the groups for the unreachable list, where the number can be typed straight in.
+	// A venue with ANY number on its nights — a flyer's reservations line, an
+	// organiser — stays on the round: a worse call, but a possible one.
+	const dialable = (r: (typeof data.queue)[number]) =>
+		r.callWho === 'unknown' ? !!r.booking : r.callWho === 'organiser' ? !!r.organiser?.phone : !!r.venue.phone;
+	const reachable = $derived(new Set(data.queue.filter(dialable).map((r) => r.venue.id)));
+	const noNumber = $derived(data.queue.filter((r) => r.callWho === 'venue' && !r.venue.phone && !reachable.has(r.venue.id)));
+	const callable = $derived(data.queue.filter((r) => !noNumber.includes(r)));
 	const groups = $derived(
-		GROUPS.map((g) => ({ ...g, rows: data.queue.filter((r) => r.group === g.key) })).filter((g) => g.rows.length)
+		GROUPS.map((g) => ({ ...g, rows: callable.filter((r) => r.group === g.key) })).filter((g) => g.rows.length)
 	);
 	// By whoever the row dials: a flyer's number is callable even though nobody owns it yet.
 	const missingNumbers = $derived(
 		data.queue.filter((r) => (r.callWho === 'organiser' ? !r.organiser?.phone : r.callWho === 'venue' ? !r.venue.phone : false)).length
 	);
 	const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
-	const REGISTER_TONE: Record<string, string> = { CHILL: 'text-chill', SOCIAL: 'text-social', HIGH_ENERGY: 'text-energy' };
 	const dayLabel = (date: string) => `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(`${date}T00:00:00Z`).getUTCDay()]} ${shortDate(date)}`;
 
 	// ── By date: one flat list. Each row keeps its group's bar and label. ──
 	type Reminder = (typeof data.reminders)[number];
 	type Entry = { key: string; date: string | null; order: number; label: string; tone: string } & (
 		| { kind: 'queue'; row: QueueRow }
-		| { kind: 'vouch'; vouch: VouchItem }
 		| { kind: 'reminder'; reminder: Reminder }
 	);
 	// The by-type order, which also breaks ties and orders the undated bucket.
-	const ORDER: Record<GroupKey | 'vouch' | 'reminder', number> = {
+	const ORDER: Record<GroupKey | 'reminder', number> = {
 		'this-week': 0,
 		'every-week': 1,
-		vouch: 2,
-		due: 3,
-		sweep: 4,
-		unclassified: 5,
-		reminder: 6
+		due: 2,
+		sweep: 3,
+		unclassified: 4,
+		reminder: 5
 	};
 	const flat = $derived.by(() => {
 		const label = (k: GroupKey) => GROUPS.find((g) => g.key === k)!.label;
 		const all: Entry[] = [
-			...data.queue.map((row, i): Entry => ({ kind: 'queue', row, key: `q:${row.key}`, date: rowDate(row), order: ORDER[row.group] * 1000 + i, label: label(row.group), tone: TONE[row.group] })),
-			...data.vouches.items.map((vouch, i): Entry => ({ kind: 'vouch', vouch, key: `v:${vouch.ref}`, date: vouchExpires(vouch.attendedAt), order: ORDER.vouch * 1000 + i, label: 'Vouches running out', tone: 'text-vetted' })),
+			...callable.map((row, i): Entry => ({ kind: 'queue', row, key: `q:${row.key}`, date: rowDate(row), order: ORDER[row.group] * 1000 + i, label: label(row.group), tone: TONE[row.group] })),
 			...data.reminders.map((reminder, i): Entry => ({ kind: 'reminder', reminder, key: `r:${reminder.id}`, date: reminder.due, order: ORDER.reminder * 1000 + i, label: 'You asked yourself to', tone: 'text-dated' }))
 		];
 		// Soonest first, so the most overdue is at the top. Nothing undated is given a date.
@@ -137,6 +142,7 @@
 				{/each}
 			</div>
 			<a href="/venues" class="btn">Venues</a>
+			<Visits />
 			<a href="/add" class="btn" title="Add to the register">+ Add</a>
 			<a href="/build?week={data.week}" class="btn">Sunday Build →</a>
 		</nav>
@@ -173,8 +179,8 @@
 				</p>
 			{/if}
 
-			<!-- The two blocking groups, then vouches running out, then the rest: an unpublishable
-			     row this week beats a vouch expiring in a fortnight. -->
+			<!-- Every group here is a phone call. Vouches running out need a visit, so they live
+			     under the Sunday Build's register balance, never on this round. -->
 			<!-- By date, every row says which group it came from and the date that drives it. -->
 			{#snippet tag(e: Entry)}
 				<p class="mb-0.5 font-mono text-[10px] tracking-wider uppercase">
@@ -251,23 +257,6 @@
 							</div>
 			{/snippet}
 
-			{#snippet vouchRow(v: VouchItem, entry: Entry | null)}
-						<div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 rounded-md border border-l-4 border-line bg-panel px-4 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_110px_200px_170px] {v.state === 'EXPIRED' ? 'border-l-energy' : 'border-l-social'}">
-							<div class="min-w-0">
-								{#if entry}{@render tag(entry)}{/if}
-								<a href={v.record} class="font-semibold hover:underline">{v.eventName}</a>
-								<p class="text-xs text-dim">{v.venue}</p>
-							</div>
-							<span class="font-mono text-[10px] tracking-wider {v.register ? REGISTER_TONE[v.register] : 'text-dim'}">{v.register?.replace('_', '-') ?? 'NO REGISTER'}</span>
-							<div class="col-span-2 text-xs sm:col-span-1">
-								<p class={v.state === 'EXPIRED' ? 'text-energy' : 'text-social'}><span class="font-mono text-[10px] tracking-wider">{v.state} THIS WEEK</span> · {v.expiry}</p>
-								<p class="text-dim">attended {shortDate(v.attendedAt)}{v.attendedBy ? ` · ${v.attendedBy}` : ''}</p>
-							</div>
-							<!-- Not a call: the phone can't renew a judgement about a room. -->
-							<a href={v.record} class="btn col-span-2 flex h-10 items-center justify-center text-xs sm:col-span-1">Plan a visit · {dayLabel(v.date)}</a>
-						</div>
-			{/snippet}
-
 			{#snippet reminderRow(r: Reminder, entry: Entry)}
 				<div class="flex items-start gap-3 rounded-md border border-l-4 border-l-dated border-line bg-panel px-4 py-3 text-sm {clearing.has(r.id) ? 'opacity-40' : ''}">
 					<button
@@ -312,8 +301,96 @@
 						<div class="space-y-2">
 							{#each entries as e (e.key)}
 								{#if e.kind === 'queue'}{@render queueRow(e.row, e)}
-								{:else if e.kind === 'vouch'}{@render vouchRow(e.vouch, e)}
 								{:else}{@render reminderRow(e.reminder, e)}{/if}
+							{/each}
+						</div>
+					</section>
+				{/if}
+			{/snippet}
+
+			<!-- Discovery: no night on file, nobody has asked. No date and never will have one,
+			     so it is capped, ranked, and the same in both sorts. It never counts in the badge. -->
+			{#snippet discoveryLists()}
+				{@const d = data.discovery}
+				{#if d.total}
+					<section class="mb-7">
+						<div class="mb-2 flex items-center gap-3 font-mono text-xs">
+							<h2 class="font-semibold tracking-wider text-chill uppercase">Discovery</h2>
+							<span class="text-dim">no programme on file — nobody has asked</span>
+							<span class="h-px flex-1 bg-line"></span>
+							<span class="text-dim">{d.rows.length} of {d.total}</span>
+						</div>
+						<p class="mb-2 text-xs text-dim">
+							Likely-quiet names first — that’s how Chill gets filled. The label is a guess from the name, and it will be wrong often.
+							{#if d.waiting}{plural(d.waiting, 'venue')} tried today with no answer {d.waiting === 1 ? 'is' : 'are'} back next working day.{/if}
+						</p>
+						<div class="space-y-1.5">
+							{#each d.rows as v (v.id)}
+								<a
+									href="/calls/discover/{v.id}?week={data.week}"
+									class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 rounded-md border border-l-4 border-line border-l-chill bg-panel px-4 py-2.5 text-sm hover:border-dim sm:grid-cols-[minmax(0,1fr)_110px_150px_140px]"
+								>
+									<span class="min-w-0 font-semibold">{v.name}</span>
+									<span class="font-mono text-[10px] tracking-wider {v.expected === 'LIKELY_QUIET' ? 'text-chill' : v.expected === 'LIKELY_LOUD' ? 'text-energy' : 'text-dim'}" title="A guess from the venue’s name">
+										{v.expected === 'LIKELY_QUIET' ? 'guess: quiet' : v.expected === 'LIKELY_LOUD' ? 'guess: loud' : 'guess: ?'}
+									</span>
+									<span class="font-mono text-[10px] tracking-wider {v.zone ? 'text-dim' : 'text-social'}">{v.zone ?? 'NO ZONE'}</span>
+									<span class="font-mono text-xs text-dim">
+										{v.dial}{v.contactAttempts ? ` · ${v.contactAttempts} no-answer${v.contactAttempts === 1 ? '' : 's'}` : v.lastContacted ? '' : ' · never called'}
+									</span>
+								</a>
+							{/each}
+						</div>
+					</section>
+				{/if}
+				<!-- Unreachable: not a call. No number on file, or four no-answers in a row — it
+				     measures the numbers, not the venues. Find or fix the number and it rejoins. -->
+				{#if d.needNumber}
+					<p class="mb-7 text-sm">
+						<a href="/venues" class="text-chill hover:underline">{plural(d.needNumber, 'venue')} with no night need a number · desk research →</a>
+					</p>
+				{/if}
+				{#if noNumber.length || d.unreachable.length}
+					<section class="mb-7">
+						<div class="mb-2 flex items-center gap-3 font-mono text-xs">
+							<h2 class="font-semibold tracking-wider text-social uppercase">Unreachable</h2>
+							<span class="text-dim">no number, or four no-answers — desk research, not a call</span>
+							<span class="h-px flex-1 bg-line"></span>
+							<span class="text-dim">{noNumber.length + d.unreachable.length}</span>
+						</div>
+						<div class="space-y-1.5">
+							{#each noNumber as row (row.key)}
+								<div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 rounded-md border border-l-4 border-line bg-panel px-4 py-2.5 text-sm sm:grid-cols-[minmax(0,1fr)_200px] {EDGE[row.group]}">
+									<div class="min-w-0">
+										<a href="/venues/{row.venue.id}" class="font-semibold hover:underline">{row.venue.name}</a>
+										<p class="text-xs text-dim">no number · {row.items.map((i) => i.text).join(' · ')}</p>
+									</div>
+									<form
+										method="POST"
+										action="/venues?/contact"
+										use:enhance={() => {
+											phoneErrors[row.venue.id] = '';
+											return async ({ result, update }) => {
+												if (result.type === 'failure') phoneErrors[row.venue.id] = String(result.data?.error ?? 'Not saved');
+												else await update();
+											};
+										}}
+									>
+										<input type="hidden" name="id" value={row.venue.id} />
+										<input type="hidden" name="updatedAt" value={row.venue.updatedAt} />
+										<input name="phone" type="tel" inputmode="tel" autocomplete="off" placeholder="found it — type it here" aria-label="Phone for {row.venue.name}" class="input h-10 font-mono text-xs placeholder:text-social" />
+										{#if phoneErrors[row.venue.id]}<p class="mt-1 text-[11px] text-energy">{phoneErrors[row.venue.id]}</p>{/if}
+									</form>
+								</div>
+							{/each}
+							{#each d.unreachable as v (v.id)}
+								<div class="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-panel px-4 py-2.5 text-sm">
+									<div class="min-w-0">
+										<a href="/venues/{v.id}" class="font-semibold hover:underline">{v.name}</a>
+										<p class="text-xs text-dim">no night on file</p>
+									</div>
+									<span class="font-mono text-xs text-dim">{v.phones.join(' / ')} · {v.contactAttempts} no-answers — check the number</span>
+								</div>
 							{/each}
 						</div>
 					</section>
@@ -324,32 +401,14 @@
 				{@render bucket('Overdue', 'most overdue first', 'text-energy', flat.overdue)}
 				{@render bucket('Today and coming up', 'soonest first', 'text-fg', flat.coming)}
 				{@render bucket('No date', 'nothing dates these, and none is invented', 'text-dim', flat.undated)}
+				{@render discoveryLists()}
 				<!-- The one way anything is added here: a reminder, which must hang off a record. -->
 				<section class="mb-7"><Reminders items={[]} today={data.today} subjects={data.subjects} /></section>
 			{:else}
-			{#each groups.filter((g) => g.key === 'this-week' || g.key === 'every-week') as g (g.key)}
+			{#each groups as g (g.key)}
 				{@render group(g)}
 			{/each}
-
-			<section id="vouches" class="mb-7 scroll-mt-4">
-				<div class="mb-1 flex items-center gap-3 font-mono text-xs">
-					<h2 class="font-semibold tracking-wider text-vetted uppercase">Vouches running out</h2>
-					<span class="text-dim">a vetted night you need to visit again</span>
-					<span class="h-px flex-1 bg-line"></span>
-					<span class="text-dim">{data.vouches.items.length}</span>
-				</div>
-				<p class="mb-2 text-sm text-vetted">{data.vouches.target}</p>
-				{#if !data.vouches.items.length}
-					<p class="rounded-md border border-dashed border-line px-4 py-3 text-sm text-dim">Every vouch in this week is live.</p>
-				{/if}
-				<div class="space-y-2">
-					{#each data.vouches.items as v (v.ref)}{@render vouchRow(v, null)}{/each}
-				</div>
-			</section>
-
-			{#each groups.filter((g) => g.key !== 'this-week' && g.key !== 'every-week') as g (g.key)}
-				{@render group(g)}
-			{/each}
+			{@render discoveryLists()}
 
 			<!-- Sixth: written by hand. Always below the derived groups — an overdue flyer is not
 			     more urgent than a row that cannot publish, and the ranking is what makes the queue trustworthy. -->

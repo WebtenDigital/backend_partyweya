@@ -9,13 +9,14 @@ import {
 	Source
 } from '#lib/server/prisma.js';
 import { asDate, isWeek, isoDate, kampalaDate } from '#lib/server/register.js';
-import { CADENCE, Q6 } from '#lib/build/calls.js';
+import { Q6 } from '#lib/build/calls.js';
 import { savePerks } from '#lib/server/perks.js';
 import { lineupFrom, lineupSuggestions, newActsParam, unclassified } from '#lib/server/acts.js';
 import { Invalid, failureMessage, money, oneOf, phoneList, slug, text, time } from '#lib/server/forms.js';
 import { answeredOn, dialNumber, samePhone, withPhones } from '#lib/phones.js';
 import { kampalaToday, nextMonday } from '#lib/build/week.js';
 import { reminders } from '#lib/server/reminders.js';
+import { describeVenueTier, type Night } from '#lib/server/tier.js';
 import { organiserFrom, organiserOptions } from '#lib/server/organisers.js';
 import { claimFor, sourceAfter } from '#lib/provenance.js';
 import { lineupTransfers } from '#lib/server/provenance.js';
@@ -55,7 +56,6 @@ export const load: PageServerLoad = async ({ params, url }) => {
 	const ref = url.searchParams.get('ref');
 	const residencyId = url.searchParams.get('residency') ?? (ref && venue.residencies.some((r) => r.id === ref) ? ref : null);
 	const occurrenceId = url.searchParams.get('occurrence') ?? (ref && venue.occurrences.some((o) => o.id === ref) ? ref : null);
-	const tier = url.searchParams.get('tier');
 	// Who this call dials: the venue, the night's organiser, or the number its flyer
 	// printed. Unsaid, it's whoever the rule picks for the night it opened on.
 	const opened = occurrenceId ? venue.occurrences.find((o) => o.id === occurrenceId) : null;
@@ -90,7 +90,12 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			provisionalRegister: venue.provisionalRegister,
 			lastContacted: kampalaDate(venue.lastContacted),
 			lastAttended: kampalaDate(venue.lastAttended),
-			clearsF2: venue.clearsF2,
+			// Venue-level, derived: does any night here clear? (The verdict is per night.)
+			clearsF2: [...venue.residencies, ...venue.occurrences].some((x) => x.clearsF2 === true)
+				? true
+				: [...venue.residencies, ...venue.occurrences].some((x) => x.clearsF2 === false)
+					? false
+					: null,
 			paidClient: venue.paidClient
 		},
 		residencies: venue.residencies.map((r) => ({
@@ -134,9 +139,16 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		mode: occurrenceId ? 'dated' : residencyId ? 'standing' : 'none',
 		residencyId: residencyId ?? venue.residencies.find((r) => !r.startTime)?.id ?? venue.residencies[0]?.id ?? null,
 		occurrenceId: occurrenceId ?? 'new',
-		// A standing night is a monthly sweep; a dated night is this week's problem;
-		// a call about no night keeps the venue's own tier (C for a new one).
-		tier: CADENCE.some((c) => c.key === tier) ? tier : occurrenceId ? 'C' : residencyId ? 'A' : (venue.tier ?? 'A'),
+		// What the system concluded from the nights, and why — shown, never set here (tier.ts).
+		tier: describeVenueTier(
+			[
+				...venue.residencies.map(
+					(r): Night => ({ kind: 'standing', lastConfirmed: kampalaDate(r.lastConfirmed), runningSince: kampalaDate(r.runningSince), firstConfirmedAt: kampalaDate(r.firstConfirmedAt) })
+				),
+				...venue.occurrences.filter((o) => !o.residencyId).map((o): Night => ({ kind: 'one-off', date: isoDate(o.date), confirmed: o.status === 'CONFIRMED' }))
+			],
+			today
+		),
 		// Open reminders for this venue and its nights — in the sidebar while you're on the phone.
 		reminders: await reminders({ venue: venue.id }, today)
 	};
@@ -162,10 +174,10 @@ export const actions: Actions = {
 
 			const test = oneOf(ConversationTest, text(f, 'q6'), 'answer to question 6');
 			const register = test ? Q6.find((q) => q.test === test)!.register : null;
-			const cadence = CADENCE.find((c) => c.key === text(f, 'cadence')) ?? CADENCE[0];
-			const nextCall = new Date(now);
-			// Reached: the cadence. No answer or call back: try again tomorrow.
-			nextCall.setDate(nextCall.getDate() + (reached ? cadence.days : 1));
+			// A venue's cadence is derived from its nights (tier.ts) — nothing here sets one.
+			// An organiser's has its own column: a month for a standing night, a week for a
+			// dated one; no answer or call back, try again tomorrow.
+			const organiserNext = new Date(now.getTime() + (reached ? (mode === 'dated' ? 7 : 28) : 1) * 86_400_000);
 
 			const venue = await prisma.venue.findUnique({
 				where: { id: params.venueId },
@@ -243,12 +255,12 @@ export const actions: Actions = {
 						...numbers,
 						...(f.has('phone') && { whatsapp: f.get('whatsapp') === 'on' }),
 						...(f.has('bestTime') && { bestTimeToReach: text(f, 'bestTime') }),
-						...(callee === 'venue' && { nextContactDue: nextCall }),
-						// The cadence chosen applies only to a call that reached them.
-						...(reached && callee === 'venue' && { tier: cadence.key }),
+						// No answer counts toward unreachable; anyone picking up (even "call back") resets it.
+						...(callee === 'venue' && { contactAttempts: outcome === 'no-answer' ? { increment: 1 } : 0 }),
 						...(reached && callee === 'venue' && { lastContacted: now }),
 						// Question 6 is about the room, so only the venue's answer counts.
-						...(reached && callee === 'venue' && test && { conversationTest: test, provisionalRegister: register }),
+						// It updates the GUESS and when it was made; a judged register (Venue.register) is untouched.
+						...(reached && callee === 'venue' && test && { conversationTest: test, provisionalRegister: register, conversationTestAt: now }),
 						...(reached && comingUp && {
 							notes: [venue.notes, `${today} coming up: ${comingUp}`].filter(Boolean).join('\n')
 						})
@@ -258,7 +270,7 @@ export const actions: Actions = {
 					await tx.organiser.update({
 						where: { id: organiserId },
 						data: {
-							nextContactDue: nextCall,
+							nextContactDue: organiserNext,
 							...(reached && { lastContacted: now, phoneVerifiedAt: now })
 						}
 					});
@@ -298,6 +310,9 @@ export const actions: Actions = {
 							...(text(f, 's_end') && { endTime: time(f, 's_end', 'Wrap') }),
 							...(text(f, 's_gate') && { priceGate: money(f, 's_gate', 'Gate price') }),
 							...(sLineup?.length && { lineup: sLineup }),
+							// Question 4: how long has it been running? Skippable; the month, as discovery takes it.
+							...(/^\d{4}-\d{2}$/.test(text(f, 's_since') ?? '') && { runningSince: new Date(`${text(f, 's_since')}-01T00:00:00+03:00`) }),
+							// firstConfirmedAt is set by the database the first time this is written, never after.
 							lastConfirmed: now,
 							...routed,
 							...(await provenance(sLineup?.length ? sLineup : rule.lineup, rule.source))

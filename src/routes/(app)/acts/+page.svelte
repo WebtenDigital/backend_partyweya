@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
 	import ThisWeek from '#lib/components/ThisWeek.svelte';
+	import Visits from '#lib/components/Visits.svelte';
 	import { ROLES, ROLE_LABEL } from '#lib/build/acts.js';
 	import { shortDate } from '#lib/build/week.js';
 	import type { PageProps } from './$types';
@@ -55,6 +56,7 @@
 			{#if unroled}
 				<a href="#role-NONE" class="btn h-11 border-social/60 leading-7 text-social">{unroled} with no role yet →</a>
 			{/if}
+			<Visits />
 			<ThisWeek />
 		</nav>
 	</header>

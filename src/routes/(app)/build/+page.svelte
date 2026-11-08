@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { vouchExpiry, vouchState } from '#lib/build/vouch.js';
+	import { attendanceVerdict, vouchExpiry, vouchState } from '#lib/build/vouch.js';
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
 	import ThisWeek from '#lib/components/ThisWeek.svelte';
+	import Visits from '#lib/components/Visits.svelte';
 	import NewActsPrompt from '#lib/components/NewActsPrompt.svelte';
 	import {
 		REGISTERS,
@@ -14,6 +15,7 @@
 		type Row
 	} from '#lib/build/week.js';
 	import { page } from '$app/state';
+	import { enhance } from '$app/forms';
 	import { reminderAction } from '#lib/reminders.js';
 	import type { PageProps } from './$types';
 
@@ -76,9 +78,9 @@
 	const divisions = $derived(new Set(pub.map((r) => r.venue.division).filter(Boolean)).size);
 	const crowded = $derived(zones.find(([, n]) => n >= 5));
 	const maxRegister = $derived(Math.max(1, ...REGISTERS.map((r) => data.gate.registers[r])));
-	const weakest = $derived(
-		[...REGISTERS].sort((a, b) => data.gate.registers[a] - data.gate.registers[b])[0]
-	);
+	// Where Friday's attendance goes: decided once, in vouch.ts (attendanceTarget) — count, then freshness.
+	const weakest = $derived(data.attendance.target);
+	const need = $derived(Object.fromEntries(data.attendance.registers.map((n) => [n.register, n])) as Record<Register, (typeof data.attendance.registers)[number]>);
 
 	function claimLine(r: Row) {
 		if (r.state === 'lead') return [r.source ?? 'no source', r.checkedOn ? shortDate(r.checkedOn) : 'uncalled'];
@@ -119,6 +121,7 @@
 			<ThisWeek href="/calls?week={data.week}" />
 			<a href="/venues" class="btn">Venues</a>
 			<a href="/acts" class="btn">Acts</a>
+			<Visits />
 			<a href="/add" class="btn" title="Add to the register">+ Add</a>
 			<!-- The gate is not advisory: no pass, no button. Building writes nothing — publishing is a later step. -->
 			{#if data.gate.publishable}
@@ -274,6 +277,8 @@
 										</p>
 									{/if}
 									<p class="text-dim">{claimLine(r).join(' · ')}</p>
+									<!-- Rule F2: listable, never recommended. Visible so it can't be featured by accident. -->
+									{#if r.clearsF2 === false}<p class="font-semibold text-energy" title="Judged in the room: doesn’t clear the quality gate">DOESN’T CLEAR · listing only</p>{/if}
 									{#if r.attendedAt}
 										{@const vs = vouchState(r.attendedAt, data.week)}
 										<p class={vs === 'LIVE' ? 'text-vetted/80' : vs === 'EXPIRING' ? 'text-social' : 'text-energy'}>
@@ -318,10 +323,14 @@
 			<section class="panel">
 				<h3 class="panel-title mb-3">Register balance</h3>
 				{#each REGISTERS as reg (reg)}
+					{@const n = need[reg]}
 					<div class="mb-2">
-						<div class="flex justify-between font-mono text-[11px] tracking-wider uppercase">
+						<div class="flex justify-between gap-2 font-mono text-[11px] tracking-wider uppercase">
 							<span class={REGISTER_TONE[reg].split(' ')[0]}>{REGISTER_LABEL[reg]}</span>
-							<span class={data.gate.registers[reg] ? '' : 'text-energy'}>{data.gate.registers[reg]}</span>
+							<span class="normal-case">
+								<span class={data.gate.registers[reg] ? '' : 'text-energy'}>{data.gate.registers[reg]} night{data.gate.registers[reg] === 1 ? '' : 's'}</span>
+								<span class="text-dim"> · {n.daysSince == null ? 'never attended' : `${n.daysSince}d since attended`}</span>
+							</span>
 						</div>
 						<div class="mt-1 h-1.5 rounded bg-line">
 							<div
@@ -343,11 +352,103 @@
 						and teaches the vocabulary wrong.
 					{/if}
 				</p>
-				<p class="mt-2 border-t border-line pt-2 text-xs text-fg/80">
-					Point this week’s discovery attendance at <span class="text-chill">{REGISTER_LABEL[weakest]}</span>.
+				<!-- The verdict: count leads, freshness breaks ties. Live vouches are not in it. -->
+				<p class="mt-2 border-t border-line pt-2 text-sm {data.attendance.reason === 'absent' ? 'text-energy' : ''}">
+					{attendanceVerdict(data.attendance)}
+				</p>
+				<p class="mt-1 text-xs text-fg/80">
 					It stocks the carousel <strong>after</strong> next — the attendance clock runs a week ahead of
 					this screen.
 				</p>
+
+				<!-- The week's one visit. Planned: show the decision, with change and dismiss.
+				     Not yet: the target register's nights to plan it at. Never both. -->
+				<div class="mt-3 border-t border-line pt-2 text-xs">
+					{#if page.form?.visitError}<p class="mb-1 text-energy">{page.form.visitError}</p>{/if}
+					{#if data.visit}
+						{@const v = data.visit}
+						<p class="font-mono text-[10px] tracking-wider text-chill uppercase">Visit planned</p>
+						<p class="text-sm">
+							{dayHeading(v.date)} · {v.venue.name} — {v.eventName}{v.startTime ? ` · ${v.startTime}` : ''}
+							{#if v.writtenUp}<span class="text-vetted"> · written up ✓</span>{/if}
+						</p>
+						{#if !v.writtenUp}
+							<div class="mt-1 flex flex-wrap items-center gap-2">
+								{#if v.date <= data.today}<a href={v.href} class="btn-primary inline-flex h-9 items-center text-xs">Write it up</a>{/if}
+								<form method="POST" action="?/dismiss" use:enhance><input type="hidden" name="id" value={v.id} /><button class="btn h-9 text-xs">It didn’t happen</button></form>
+								<details class="w-full">
+									<summary class="cursor-pointer text-dim hover:text-fg">Change the night</summary>
+									<ul class="mt-1 space-y-1">
+										{#each data.visitNights.filter((n) => !(n.ref === v.ref && n.date === v.date)) as n (n.ref + n.date)}
+											<li>
+												<form method="POST" action="?/change" use:enhance class="flex items-center justify-between gap-2">
+													<input type="hidden" name="id" value={v.id} /><input type="hidden" name="ref" value={n.ref} /><input type="hidden" name="date" value={n.date} />
+													<span>{dayHeading(n.date)} · {n.venue} — {n.eventName}</span><button class="text-chill hover:underline">move here</button>
+												</form>
+											</li>
+										{/each}
+									</ul>
+								</details>
+							</div>
+						{/if}
+					{:else if data.visitNights.length}
+						<p class="mb-1 font-mono text-[10px] tracking-wider text-dim uppercase">Plan a visit — {REGISTER_LABEL[weakest]} this week</p>
+						<ul class="space-y-1">
+							{#each data.visitNights as n (n.ref + n.date)}
+								<li>
+									<form method="POST" action="?/plan" use:enhance class="flex items-center justify-between gap-2">
+										<input type="hidden" name="ref" value={n.ref} /><input type="hidden" name="date" value={n.date} /><input type="hidden" name="register" value={weakest} />
+										<span>{dayHeading(n.date)} · {n.venue} — {n.eventName}{n.startTime ? ` · ${n.startTime}` : ''}</span>
+										<button class="shrink-0 text-chill hover:underline">Plan a visit</button>
+									</form>
+								</li>
+							{/each}
+						</ul>
+					{:else}
+						<p class="text-dim">No {REGISTER_LABEL[weakest]} night runs this week to plan a visit at.</p>
+					{/if}
+				</div>
+
+				<!-- The evidence and the action — what the gate checks, never what decides where to go.
+				     No call button: a call confirms a night runs; it can't refresh a judgement about a room. -->
+				<div class="mt-3 border-t border-line pt-2">
+					<p class="mb-2 font-mono text-[10px] tracking-wider text-vetted uppercase">Vouches running out</p>
+					<!-- A planned visit that happened and was never written up: the vouch it would have refreshed. -->
+					{#each data.unwritten as u (u.id)}
+						<a href={u.href} class="mb-2 block rounded-md border border-social/60 bg-social/5 px-3 py-2 text-xs text-social hover:underline">
+							{dayHeading(u.date)} · {u.venue.name} — not written up →
+						</a>
+					{/each}
+					{#if !data.vouches.length}
+						<p class="text-xs text-dim">Every vouch in this week is live.</p>
+					{/if}
+					<ul class="space-y-2">
+						{#each data.vouches as v (v.ref)}
+							<li class="rounded-md border border-l-4 border-line bg-ink/40 px-3 py-2 text-xs {v.state === 'EXPIRED' ? 'border-l-energy' : 'border-l-social'}">
+								<div class="flex items-start justify-between gap-2">
+									<div class="min-w-0">
+										<p class="font-semibold text-fg">{v.eventName}</p>
+										<p class="text-dim">{v.venue}</p>
+									</div>
+									{#if v.register}<span class="shrink-0 rounded border border-line px-1 font-mono text-[10px] {REGISTER_TONE[v.register].split(' ')[0]}">{REGISTER_LABEL[v.register]}</span>{/if}
+								</div>
+								<p class="text-dim">attended {shortDate(v.attendedAt)}{v.attendedBy ? ` by ${v.attendedBy}` : ''}</p>
+								<p class={v.state === 'EXPIRED' ? 'text-energy' : 'text-social'}>{v.expiry}</p>
+								<a href={v.record} class="mt-1 inline-block text-chill underline">Plan a visit · {dayHeading(v.date).toLowerCase()} →</a>
+							</li>
+						{/each}
+					</ul>
+				</div>
+			</section>
+
+			<!-- "240 venues on file" flatters: this is what the week can actually be built from. -->
+			<section class="panel flex items-baseline justify-between gap-3 text-sm">
+				<p>
+					Venues with a recorded night: <strong>{data.coverage.withNight}</strong> <span class="text-dim">of {data.coverage.venues}</span>
+				</p>
+				<a href="/calls?week={data.week}" class="shrink-0 font-mono text-xs text-chill hover:underline" title="No night on file, a number to ask on">
+					{data.coverage.backlog} to discover →
+				</a>
 			</section>
 
 			{#if data.gate.registers.CHILL === 0}

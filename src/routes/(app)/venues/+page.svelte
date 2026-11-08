@@ -3,6 +3,7 @@
 	import { tick } from 'svelte';
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
 	import ThisWeek from '#lib/components/ThisWeek.svelte';
+	import Visits from '#lib/components/Visits.svelte';
 	import { kampalaToday, shortDate } from '#lib/build/week.js';
 	import { placeResolver } from '#lib/place.js';
 	import { similarVenues } from '#lib/venues.js';
@@ -256,6 +257,7 @@
 		<nav class="flex flex-wrap gap-2 text-sm">
 			<ThisWeek />
 			<a href="/acts" class="btn">Acts</a>
+			<Visits />
 			<a href="/build?week={data.currentWeek}" class="btn">Sunday Build</a>
 		</nav>
 	</header>

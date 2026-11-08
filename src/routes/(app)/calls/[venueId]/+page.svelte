@@ -9,7 +9,7 @@
 	import { UNKNOWN_LABEL, whoToCall } from '#lib/build/who.js';
 	import { claimFor } from '#lib/provenance.js';
 	import type { Source } from '#lib/server/prisma.js';
-	import { CADENCE, Q6 } from '#lib/build/calls.js';
+	import { Q6 } from '#lib/build/calls.js';
 	import { shortDate } from '#lib/build/week.js';
 	import { showPhones } from '#lib/phones.js';
 	import type { PageProps } from './$types';
@@ -40,12 +40,8 @@
 	let outcome = $state('');
 	let lineup = $state<string[]>([]);
 	let lineupEl = $state<LineupInput>();
-	// svelte-ignore state_referenced_locally
-	let tier = $state(data.tier);
-	let tierTouched = false;
 	function pick(m: typeof mode) {
 		mode = m;
-		if (!tierTouched) tier = m === 'dated' ? 'C' : 'A';
 	}
 	let saving = $state(false);
 	let formEl: HTMLFormElement;
@@ -96,24 +92,6 @@
 		lineup = mode === 'standing' ? [...(residency?.lineup ?? [])] : [...(occurrence?.lineup ?? [])];
 	});
 
-	// Why the cadence is what it is, beside the selector.
-	const monthsRunning = $derived(
-		residency?.runningSince
-			? (Number(data.today.slice(0, 4)) - Number(residency.runningSince.slice(0, 4))) * 12 +
-					Number(data.today.slice(5, 7)) - Number(residency.runningSince.slice(5, 7))
-			: null
-	);
-	const tierReason = $derived(
-		mode === 'dated'
-			? 'Tier C: a dated night is this week’s problem — weekly until it’s on.'
-			: mode === 'standing'
-				? monthsRunning == null
-					? 'Tier A: strictly, held 3+ months — running-since isn’t known for this night, so ask how long it’s been on.'
-					: monthsRunning >= 3
-						? `Tier A: held ${monthsRunning} months, since ${residency!.runningSince!.slice(0, 7)}.`
-						: `Strictly not Tier A yet — running ${monthsRunning === 0 ? 'under a month' : `${monthsRunning} month${monthsRunning === 1 ? '' : 's'}`}, not 3+.`
-				: ''
-	);
 	// A confirmed row that still can't publish: say exactly what's missing.
 	const stillBlocked = $derived(
 		mode === 'dated' && occurrence?.status === 'CONFIRMED'
@@ -295,6 +273,14 @@
 								<label class="field"><span>Wraps</span><input name="s_end" class="input" placeholder="02:00" value={residency?.endTime ?? ''} /></label>
 								<label class="field"><span>At the gate</span><input name="s_gate" class="input" inputmode="numeric" placeholder="20000" value={residency?.priceGate ?? ''} /></label>
 							</div>
+							<!-- Question 4. Skippable — but an unanswered one stays visible, so the gap does too. -->
+							<label class="field">
+								<span>
+									<span class="mr-1 font-mono text-xs text-dim">4</span>“How long has it been running?”
+									{#if !residency?.runningSince}<span class="ml-1 font-mono text-[10px] tracking-wider text-social">NOT ASKED YET</span>{/if}
+								</span>
+								<input name="s_since" type="month" class="input w-48" max={data.today.slice(0, 7)} value={residency?.runningSince?.slice(0, 7) ?? ''} />
+							</label>
 							<div class="field"><span>The resident act — leave it as it is if it hasn’t changed</span>
 								<LineupInput bind:this={lineupEl} name="s_lineup" value={residency?.lineup ?? []} bind:names={lineup} suggestions={data.suggestions} placeholder="The Clan Band" onresolved={() => formEl.requestSubmit()} />
 							</div>
@@ -456,7 +442,7 @@
 				<dl class="space-y-1.5 font-mono text-xs">
 					<div class="flex justify-between"><dt>Last called</dt><dd class={data.venue.lastContacted ? '' : 'text-social'}>{data.venue.lastContacted ? shortDate(data.venue.lastContacted) : 'never'}</dd></div>
 					<div class="flex justify-between"><dt>Last attended</dt><dd class={data.venue.lastAttended ? '' : 'text-social'}>{data.venue.lastAttended ? shortDate(data.venue.lastAttended) : 'never'}</dd></div>
-					<div class="flex justify-between"><dt>Clears F2</dt><dd class="text-dim">{data.venue.clearsF2 == null ? 'unknown' : data.venue.clearsF2 ? 'yes' : 'no'}</dd></div>
+					<div class="flex justify-between"><dt>A night that clears F2</dt><dd class="text-dim">{data.venue.clearsF2 == null ? 'not judged' : data.venue.clearsF2 ? 'yes' : 'none'}</dd></div>
 					<div class="flex justify-between"><dt>Register</dt>
 						<dd class={data.venue.conversationTest ? REGISTER_TONE[data.venue.provisionalRegister ?? ''] : 'text-chill'}>
 							{data.venue.conversationTest ? label(data.venue.provisionalRegister ?? '') : 'unclassed'}
@@ -523,10 +509,10 @@
 					<input type="radio" name="outcome" value={key} bind:group={outcome} class="sr-only" required />{text}
 				</label>
 			{/each}
-			<select name="cadence" class="input w-auto" bind:value={tier} onchange={() => (tierTouched = true)}>
-				{#each CADENCE as c (c.key)}<option value={c.key}>{c.label}</option>{/each}
-			</select>
-			{#if tierReason}<p class="max-w-52 text-[11px] leading-tight text-dim">{tierReason}</p>{/if}
+			<!-- Read-only: the tier is worked out from the nights (tier.ts). Nothing on this screen sets one. -->
+			<p class="max-w-72 font-mono text-[11px] leading-tight {data.tier.tier === 'C' ? 'text-energy' : 'text-dim'}" title="Derived from this venue’s nights — not something to set">
+				{data.tier.text}
+			</p>
 			<span class="text-dim">Spoke to</span>
 			<select name="source" class="input w-auto" value={defaultSource}>
 				{#each SOURCES as s (s.key)}<option value={s.key}>{s.label}</option>{/each}

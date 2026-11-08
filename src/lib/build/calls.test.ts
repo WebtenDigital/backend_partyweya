@@ -15,8 +15,7 @@ const dated = (o: Partial<QueueOccurrence> & { id: string; venueId: string; date
 	organiserId: null, residencyId: null, bookingPhone: null, bookingPhoneNote: null, eventName: o.id,
 	startTime: '21:00', priceGate: 0, register: 'SOCIAL', status: 'CONFIRMED', ...o
 });
-const owed = (q: ReturnType<typeof callQueue>, vouches: { state: 'EXPIRING' | 'EXPIRED' }[] = [], reminders: { due: string | null }[] = []) =>
-	owedNow(q, vouches, reminders, today);
+const owed = (q: ReturnType<typeof callQueue>, reminders: { due: string | null }[] = []) => owedNow(q, reminders, today);
 
 test('nothing blocking or overdue: zero', () => {
 	assert.equal(owed(callQueue(week, [], [], [])), 0);
@@ -30,8 +29,10 @@ test('the two blocking groups count, one per row', () => {
 
 test('a monthly-sweep row does not move the badge', () => {
 	const before = callQueue(week, [venue('a')], [], []);
-	const after = callQueue(week, [venue('a')], [night({ id: 'lapsed', venueId: 'a', lastConfirmed: '2026-08-01' })], []);
-	assert.equal(after[0].group, 'sweep');
+	const after = callQueue(week, [venue('a')], [night({ id: 'held', venueId: 'a', lastConfirmed: '2026-08-01' })], [], [], [
+		{ venueId: 'a', tier: 'A', due: '2026-08-31', lastConfirmed: '2026-08-01', standingC: false }
+	]);
+	assert.equal(after[0].group, 'due'); // tier A is cadence now — and still not counted
 	assert.equal(owed(after), owed(before));
 });
 
@@ -43,33 +44,54 @@ test('unclassified rows do not count', () => {
 
 test('a cadence due today or earlier counts; later this week does not', () => {
 	const q = callQueue(week, [venue('new'), venue('late'), venue('later')], [], [], [], [
-		{ venueId: 'new', lastContacted: null, nextContactDue: today },
-		{ venueId: 'late', lastContacted: '2026-10-01', nextContactDue: '2026-10-08' },
-		{ venueId: 'later', lastContacted: '2026-10-20', nextContactDue: '2026-10-27' }
+		{ venueId: 'new', tier: 'C', due: today, lastConfirmed: null, standingC: true },
+		{ venueId: 'late', tier: 'B', due: '2026-10-08', lastConfirmed: '2026-10-01', standingC: false },
+		{ venueId: 'later', tier: 'B', due: '2026-10-27', lastConfirmed: '2026-10-20', standingC: false }
 	]);
 	assert.equal(owed(q), 2);
 });
 
-test('an EXPIRED vouch counts, an EXPIRING one does not', () => {
-	assert.equal(owed([], [{ state: 'EXPIRING' }]), 0);
-	assert.equal(owed([], [{ state: 'EXPIRED' }, { state: 'EXPIRING' }]), 1);
-});
-
 test('reminders count when overdue or due today — not later, not undated', () => {
-	assert.equal(owed([], [], [{ due: '2026-10-19' }, { due: today }, { due: '2026-10-23' }, { due: null }]), 2);
+	assert.equal(owed([], [{ due: '2026-10-19' }, { due: today }, { due: '2026-10-23' }, { due: null }]), 2);
 });
 
 test('each row is dated by what drives it, and nothing is dated by invention', () => {
 	const q = callQueue(week, [venue('a'), venue('b'), venue('c'), venue('d', null), venue('e')], [
 		night({ id: 'untimed', venueId: 'b', startTime: null, dayOfWeek: 5 }),
-		night({ id: 'lapsed', venueId: 'c', lastConfirmed: '2026-08-01' }),
-		night({ id: 'never', venueId: 'e', lastConfirmed: null }),
+		night({ id: 'held', venueId: 'c', lastConfirmed: '2026-08-01' }),
+		night({ id: 'attended', venueId: 'e', lastConfirmed: '2026-10-19', attendedAt: '2026-10-19' }),
 		night({ id: 'unclassed', venueId: 'd' })
-	], [dated({ id: 'lead', venueId: 'a', date: '2026-10-30', status: 'LEAD' })]);
+	], [dated({ id: 'lead', venueId: 'a', date: '2026-10-30', status: 'LEAD' })], [], [
+		{ venueId: 'c', tier: 'A', due: '2026-08-31', lastConfirmed: '2026-08-01', standingC: false }
+	]);
 	const date = (id: string) => rowDate(q.find((r) => r.venue.id === id)!);
 	assert.equal(date('a'), '2026-10-30'); //  the night
 	assert.equal(date('b'), '2026-10-30'); //  this week's Friday
-	assert.equal(date('c'), '2026-09-05'); //  the day the sweep lapsed
-	assert.equal(date('e'), null); //         never confirmed: no date
+	assert.equal(date('c'), '2026-08-31'); //  the derived due date: a month after confirming
+	assert.equal(date('e'), null); //         attended, not called since: nothing dates it
 	assert.equal(date('d'), null); //         unclassified: no date
+});
+
+test('the derived cadence: A and B are cadence; a never-confirmed standing night is before publishing', () => {
+	const q = callQueue(week, [venue('a'), venue('b'), venue('c')], [], [], [], [
+		{ venueId: 'a', tier: 'A', due: today, lastConfirmed: '2026-09-21', standingC: false },
+		{ venueId: 'b', tier: 'B', due: today, lastConfirmed: '2026-10-14', standingC: false },
+		{ venueId: 'c', tier: 'C', due: today, lastConfirmed: null, standingC: true }
+	]);
+	assert.deepEqual(Object.fromEntries(q.map((r) => [r.venue.id, r.group])), { a: 'due', b: 'due', c: 'this-week' });
+	assert.equal(owed(q), 2); // B and C count; A, the monthly sweep, does not
+});
+
+test('a never-confirmed night is not monthly sweep: in the window it is before publishing, and said once', () => {
+	const q = callQueue(week, [venue('buffaloes')], [night({ id: 'rhythm', venueId: 'buffaloes', lastConfirmed: null })], [], [], [
+		{ venueId: 'buffaloes', tier: 'C', due: today, lastConfirmed: null, standingC: true }
+	], [{ residencyId: 'rhythm', date: '2026-10-30' }]);
+	assert.equal(q.length, 1);
+	assert.equal(q[0].group, 'this-week');
+	assert.equal(q[0].items.length, 1);
+});
+
+test('a tier C from a one-off outside the window is not before publishing', () => {
+	const q = callQueue(week, [venue('far')], [], [], [], [{ venueId: 'far', tier: 'C', due: today, lastConfirmed: null, standingC: false }]);
+	assert.deepEqual(q, []);
 });

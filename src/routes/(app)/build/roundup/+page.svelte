@@ -236,6 +236,7 @@
 														{e.startTime}{e.price ? ` · ${e.price}` : ''} · <span class={REGISTER_TONE[e.register]}>{REGISTER_LABEL[e.register]}</span>
 													</p>
 													{#if e.perk}<p class="text-xs text-vetted/90">{e.perk}</p>{/if}
+													{#if e.clearsF2 === false}<p class="font-mono text-[10px] tracking-wider text-energy" title="Judged in the room: doesn’t clear Rule F2">DOESN’T CLEAR · listing only — never a pick</p>{/if}
 												</div>
 												{@render copyButton(e.key, blockText(e, lines[e.key] ?? ''))}
 											</div>

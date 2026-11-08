@@ -59,6 +59,7 @@ export interface ResidencyIn {
 	lastConfirmed: string | null; // YYYY-MM-DD
 	attendedAt: string | null; // YYYY-MM-DD — the night we were in the room
 	attendedBy: string | null;
+	clearsF2: boolean | null; // Rule F2, judged in the room — gates recommendation, not publication
 	lineup: string[]; // the resident billing, in order
 	perks: PerkIn[];
 }
@@ -80,6 +81,7 @@ export interface OccurrenceIn {
 	confirmedOn: string | null; // YYYY-MM-DD
 	attendedAt: string | null;
 	attendedBy: string | null;
+	clearsF2: boolean | null; // Rule F2, judged in the room — gates recommendation, not publication
 	lineup: string[]; // empty = the standing night's
 	perks: PerkIn[];
 }
@@ -107,9 +109,18 @@ export interface Row {
 	checkedOn: string | null; // when it was last confirmed
 	attendedAt: string | null; // when we were last in the room — what ages a vouch (vouch.ts)
 	attendedBy: string | null;
+	clearsF2: boolean | null; // Rule F2, judged in the room — gates recommendation, not publication
 	state: RowState;
 	missing: string[]; // for gaps: time, cover, register
 }
+
+/**
+ * Rule F2 gates RECOMMENDATION, not publication. A listing only says we know
+ * it's on; anywhere a night is held up as GOOD — a pick, a mood Highlight, the
+ * mood menu, a "strongest" proposal — requires a visit that cleared it. A
+ * doesn't-clear night is still VETTED (we were there) and still listable.
+ */
+export const recommendable = (n: { clearsF2?: boolean | null }) => n.clearsF2 === true;
 
 // ── dates, as YYYY-MM-DD strings in Kampala's calendar ──────────────────
 
@@ -193,6 +204,7 @@ export function buildWeek(
 				checkedOn: o.confirmedOn,
 				attendedAt: o.attendedAt,
 				attendedBy: o.attendedBy,
+				clearsF2: o.clearsF2 ?? r.clearsF2, // this date's verdict, else the standing night's
 				state:
 					o.status === 'CHANGED'
 						? 'changed'
@@ -224,6 +236,7 @@ export function buildWeek(
 			checkedOn: r.lastConfirmed,
 			attendedAt: r.attendedAt,
 			attendedBy: r.attendedBy,
+			clearsF2: r.clearsF2,
 			state: stateOf(confirmed, r.startTime, r.register),
 			missing: missingOf(r.startTime, r.priceGate, r.register)
 		});
@@ -253,6 +266,7 @@ export function buildWeek(
 			checkedOn: o.confirmedOn,
 			attendedAt: o.attendedAt,
 			attendedBy: o.attendedBy,
+			clearsF2: o.clearsF2,
 			state: o.status === 'CHANGED' ? 'changed' : stateOf(o.status === 'CONFIRMED', o.startTime, o.register),
 			missing: missingOf(o.startTime, o.priceGate, o.register)
 		});

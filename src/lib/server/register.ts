@@ -1,6 +1,7 @@
 // Reading the register into the shapes the build and call-round logic use.
 
 import { prisma } from './prisma.js';
+import type { Tx } from './db.js';
 import { billingKey, billings } from './acts.js';
 import {
 	addDays,
@@ -50,14 +51,14 @@ const venueIn = (v: VenueRow): VenueIn => ({
 });
 
 /** One Mon–Sun week: the active residencies it was built from, its rows and its gate. */
-export async function loadWeek(week: string) {
+export async function loadWeek(week: string, db: Tx = prisma) {
 	const weekEnd = addDays(week, 6);
 	const [residencies, occurrences] = await Promise.all([
-		prisma.residency.findMany({
+		db.residency.findMany({
 			where: { active: true },
 			include: { venue: { include: { zone: true } }, perks: true }
 		}),
-		prisma.occurrence.findMany({
+		db.occurrence.findMany({
 			where: { date: { gte: asDate(week), lte: asDate(weekEnd) } },
 			include: { venue: { include: { zone: true } }, perks: true }
 		})
@@ -81,6 +82,7 @@ export async function loadWeek(week: string) {
 				lastConfirmed: kampalaDate(r.lastConfirmed),
 				attendedAt: r.attendedAt ? isoDate(r.attendedAt) : null,
 				attendedBy: r.attendedBy,
+				clearsF2: r.clearsF2,
 				lineup: r.lineup,
 				perks: r.perks.map(perkIn)
 			})
@@ -103,6 +105,7 @@ export async function loadWeek(week: string) {
 				confirmedOn: kampalaDate(o.confirmedOn),
 				attendedAt: o.attendedAt ? isoDate(o.attendedAt) : null,
 				attendedBy: o.attendedBy,
+				clearsF2: o.clearsF2,
 				lineup: o.lineup,
 				perks: o.perks.map(perkIn)
 			})

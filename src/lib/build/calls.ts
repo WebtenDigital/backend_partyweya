@@ -2,7 +2,7 @@
 // One row per venue, in its most urgent group, carrying every reason it's
 // there — a venue gets one call that covers all of them.
 
-import { SWEEP_DAYS, addDays, daysBetween, shortDate } from './week.js';
+import { addDays, shortDate } from './week.js';
 import { callHref, whoToCall, type Who } from './who.js';
 
 /** The queue screen's sort, remembered in a cookie the server reads on load. */
@@ -11,10 +11,10 @@ export const SORT_COOKIE = 'pw_queue_sort';
 export type GroupKey = 'this-week' | 'every-week' | 'due' | 'sweep' | 'unclassified';
 
 export const GROUPS: { key: GroupKey; label: string; hint: string }[] = [
-	{ key: 'this-week', label: 'Blocks this week', hint: 'a dated row that cannot publish' },
+	{ key: 'this-week', label: 'Before publishing', hint: 'a night here has never been confirmed' },
 	{ key: 'every-week', label: 'Blocks every week', hint: 'a standing night with no time' },
-	{ key: 'due', label: 'Due a call', hint: 'new venues, and the cadence their tier set' },
-	{ key: 'sweep', label: 'Monthly sweep', hint: 'standing nights due their monthly call' },
+	{ key: 'due', label: 'Cadence', hint: 'the interval has arrived' },
+	{ key: 'sweep', label: 'Visited, not called', hint: 'being there confirms it ran, not that it’s on' },
 	{ key: 'unclassified', label: 'Unclassified', hint: 'question 6 has never been asked' }
 ];
 
@@ -65,10 +65,16 @@ export interface QueueOccurrence {
 }
 
 /** A venue whose cadence says ring it by the end of the build week. */
+/**
+ * A venue whose derived tier has come due (src/lib/server/tier.ts) — computed
+ * from its nights on every request, never read from a stored column.
+ */
 export interface QueueDue {
 	venueId: string;
-	lastContacted: string | null;
-	nextContactDue: string;
+	tier: 'A' | 'B' | 'C';
+	due: string; //                  when its most urgent night needed a call
+	lastConfirmed: string | null; // that night's last confirmation
+	standingC: boolean; //           a standing night never confirmed: it blocks every window
 }
 
 export interface QueueItem {
@@ -78,6 +84,7 @@ export interface QueueItem {
 	// What drives it, for the by-date sort: the night's date, the cadence's due
 	// date, the day a sweep lapsed. Null when nothing dates it — never invented.
 	date: string | null;
+	tier?: 'A' | 'B' | 'C'; // a cadence item's derived tier (tier.ts)
 }
 
 export interface QueueRow {
@@ -116,7 +123,10 @@ export function callQueue(
 	residencies: QueueResidency[],
 	occurrences: QueueOccurrence[], // non-cancelled, from today to the end of the build week
 	organisers: QueueOrganiser[] = [],
-	due: QueueDue[] = []
+	due: QueueDue[] = [],
+	// Standing nights in the window that the Sunday Build's own expansion (buildWeek)
+	// reads as unconfirmed — so a weekly night counts, not only an Occurrence row.
+	unconfirmed: { residencyId: string; date: string }[] = []
 ): QueueRow[] {
 	const byId = new Map(venues.map((v) => [v.id, v]));
 	const orgs = new Map(organisers.map((o) => [o.id, o]));
@@ -125,7 +135,7 @@ export function callQueue(
 
 	const byResidency = new Map(residencies.map((r) => [r.id, r]));
 
-	const add = (venueId: string, group: GroupKey, text: string, ref: string, who: Who, date: string | null) => {
+	const add = (venueId: string, group: GroupKey, text: string, ref: string, who: Who, date: string | null, tier?: QueueItem['tier']) => {
 		const venue = byId.get(venueId);
 		if (!venue) return;
 		const organiser = who.kind === 'ORGANISER' ? (orgs.get(who.organiserId) ?? null) : null;
@@ -143,7 +153,7 @@ export function callQueue(
 			askQ6: !organiser && !booking && !venue.conversationTest
 		};
 		if (rank[group] < rank[row.group]) row.group = group;
-		row.items.push({ text, href: callHref(organiser || booking ? who : { kind: 'VENUE' }, venueId, ref), group, date });
+		row.items.push({ text, href: callHref(organiser || booking ? who : { kind: 'VENUE' }, venueId, ref), group, date, ...(tier && { tier }) });
 		rows.set(key, row);
 	};
 
@@ -151,28 +161,42 @@ export function callQueue(
 		const why = blockers(o);
 		if (why) add(o.venueId, 'this-week', `${o.eventName} · ${why} · ${dayLabel(o.date)}`, o.id, whoToCall(o, o.residencyId ? byResidency.get(o.residencyId) : null), o.date);
 	}
+	const blocking = new Set(unconfirmed.map((u) => u.residencyId));
+	for (const u of unconfirmed) {
+		const r = byResidency.get(u.residencyId);
+		if (!r) continue;
+		const when = r.lastConfirmed ? `last confirmed ${shortDate(r.lastConfirmed)}` : 'never confirmed';
+		add(r.venueId, 'this-week', `${r.eventName} · not confirmed for ${dayLabel(u.date)}${r.startTime ? '' : ' · no start time'} · ${when}`, r.id, whoToCall(null, r), u.date);
+	}
 	for (const r of residencies) {
 		const who = whoToCall(null, r);
+		if (blocking.has(r.id)) continue; // already before publishing: one call covers it
 		if (!r.startTime) {
 			add(r.venueId, 'every-week', `${r.eventName} · no start time · ${DOW[r.dayOfWeek]}`, r.id, who, addDays(weekStart, r.dayOfWeek - 1));
-		} else if (!r.lastConfirmed || daysBetween(r.lastConfirmed, weekStart) > SWEEP_DAYS || (r.attendedAt && r.lastConfirmed <= r.attendedAt)) {
-			const lapsed = r.lastConfirmed && daysBetween(r.lastConfirmed, weekStart) > SWEEP_DAYS ? addDays(r.lastConfirmed, SWEEP_DAYS) : null;
+		} else if (r.attendedAt && r.lastConfirmed && r.lastConfirmed <= r.attendedAt) {
 			// Being there confirms it ran, not that next week is on — only a call does. A night
 			// whose latest confirmation is the visit itself stays on the round until someone calls.
-			const when =
-				r.attendedAt && r.lastConfirmed && r.lastConfirmed <= r.attendedAt
-					? `attended ${shortDate(r.attendedAt)}, not called since`
-					: r.lastConfirmed
-						? `last confirmed ${shortDate(r.lastConfirmed)}`
-						: 'never confirmed';
-			add(r.venueId, 'sweep', `${r.eventName} · ${when}`, r.id, who, lapsed);
+			add(r.venueId, 'sweep', `${r.eventName} · attended ${shortDate(r.attendedAt)}, not called since`, r.id, who, null);
 		}
 	}
-	// The cadence: a venue added and never called is due the day it's added — the
-	// only thing that puts a venue with no night on this list at all.
+	// The derived cadence. Tier A (confirmed, held 3+ months) is the monthly sweep;
+	// B and C are this week's checks. A C venue already before publishing needs no
+	// second line: that call covers every night there.
 	for (const d of due) {
-		const text = d.lastContacted ? `due ${shortDate(d.nextContactDue)} · last called ${shortDate(d.lastContacted)}` : 'never called — nothing about it is verified';
-		add(d.venueId, 'due', text, '', { kind: 'VENUE' }, d.nextContactDue);
+		if (d.tier === 'C') {
+			// Before publishing: a standing night never confirmed blocks every window, so it
+			// counts whatever its weekday. A one-off only counts inside the window — and
+			// those are already listed from the dated rows above. One line per venue.
+			if (d.standingC && rows.get(d.venueId)?.group !== 'this-week')
+				add(d.venueId, 'this-week', 'Tier C · a standing night never confirmed', '', { kind: 'VENUE' }, d.due, 'C');
+			continue;
+		}
+		// Cadence: A (confirmed, held 3+ months — the monthly sweep) and B (held under 3).
+		const text =
+			d.tier === 'A'
+				? `Tier A · monthly · confirmed and held 3+ months · last confirmed ${shortDate(d.lastConfirmed!)}`
+				: `Tier B · weekly · confirmed ${shortDate(d.lastConfirmed!)}, held under 3 months`;
+		add(d.venueId, 'due', text, '', { kind: 'VENUE' }, d.due, d.tier);
 	}
 	// Venues already in the book for a standing night but never asked question 6.
 	for (const r of residencies) {
@@ -194,21 +218,18 @@ export function rowDate(row: QueueRow) {
 
 /**
  * The badge: only what is blocking or overdue right now. Rows that stop this
- * week publishing, venues whose cadence fell due today or earlier, vouches
- * that have EXPIRED, reminders due today or overdue. Not the sweep, not an
- * EXPIRING vouch, not anything due later this week, not unclassified — a count
- * that counted those would never reach zero, and would stop being read.
+ * week publishing, venues whose cadence fell due today or earlier, reminders
+ * due today or overdue. Not the sweep, not anything due later this week, not
+ * unclassified — a count that counted those would never reach zero, and would
+ * stop being read. Not vouches either: they live on the Sunday Build, and a
+ * badge on "This week" counts only what that screen holds.
  */
-export function owedNow(
-	queue: QueueRow[],
-	vouches: { state: 'EXPIRING' | 'EXPIRED' }[],
-	reminders: { due: string | null }[],
-	today: string
-) {
+export function owedNow(queue: QueueRow[], reminders: { due: string | null }[], today: string) {
 	const rows = queue.filter(
-		(r) => r.group === 'this-week' || r.group === 'every-week' || r.items.some((i) => i.group === 'due' && i.date != null && i.date <= today)
+		// Tier A due is the monthly sweep: listed under cadence, never counted here.
+		(r) => r.group === 'this-week' || r.group === 'every-week' || r.items.some((i) => i.group === 'due' && i.tier !== 'A' && i.date != null && i.date <= today)
 	).length;
-	return rows + vouches.filter((v) => v.state === 'EXPIRED').length + reminders.filter((r) => r.due != null && r.due <= today).length;
+	return rows + reminders.filter((r) => r.due != null && r.due <= today).length;
 }
 
 /** Question 6, as people actually answer it. */

@@ -19,7 +19,7 @@ import {
 
 const entry = (o: Partial<Entry> & { key: string }): Entry => ({
 	date: '2026-10-31', kind: 'ONE-OFF', residencyId: null, eventName: o.key, venue: 'Venue', zone: null, paidClient: false,
-	category: 'DJ', startTime: '21:00', price: 'Free', register: 'SOCIAL', perk: null, claimType: 'FACTUAL', attendedAt: null, ...o
+	category: 'DJ', startTime: '21:00', price: 'Free', register: 'SOCIAL', perk: null, claimType: 'FACTUAL', attendedAt: null, clearsF2: null, ...o
 });
 
 test('a block is the facts, then the line — one paste', () => {
@@ -79,4 +79,15 @@ test('cover reports the count that cleared', () => {
 test('a standing night publishes against its residency; a dated row against itself', () => {
 	assert.deepEqual(publicationTarget(entry({ key: 'res|2026-10-31', kind: 'STANDING', residencyId: 'res' })), { residencyId: 'res', occurrenceId: null });
 	assert.deepEqual(publicationTarget(entry({ key: 'occ', kind: 'OVERRIDE', residencyId: 'res' })), { occurrenceId: 'occ', residencyId: null });
+});
+
+test('Rule F2 gates the TikTok proposal: a doesn’t-clear night is never proposed; a cleared one beats an unjudged vouch', () => {
+	const es = [
+		entry({ key: 'loud-vouch-failed', register: 'HIGH_ENERGY', claimType: 'VETTED', clearsF2: false }),
+		entry({ key: 'loud-listing', register: 'HIGH_ENERGY' }),
+		entry({ key: 'social-vouch', claimType: 'VETTED' }),
+		entry({ key: 'social-cleared', claimType: 'FACTUAL', clearsF2: true }),
+		entry({ key: 'chill-failed', register: 'CHILL', claimType: 'VETTED', clearsF2: false })
+	];
+	assert.deepEqual(proposeTikTok(es), { HIGH_ENERGY: 'loud-listing', SOCIAL: 'social-cleared' });
 });
