@@ -1,8 +1,8 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { CALLER_NAME } from '$app/env/private';
-import { prisma, Category, ConversationTest, Register, type Source } from '#lib/server/prisma.js';
-import { Invalid, failureMessage, money, oneOf, slug, text, time } from '#lib/server/forms.js';
-import { asDate } from '#lib/server/register.js';
+import { prisma, Category, ConversationTest, type Register, type Source } from '#lib/server/prisma.js';
+import { RECURRENCES, createNights, nightsFrom } from '#lib/server/nights.js';
+import { Invalid, failureMessage, oneOf, text } from '#lib/server/forms.js';
 import { Q6 } from '#lib/build/calls.js';
 import { kampalaToday, nextMonday } from '#lib/build/week.js';
 import { answeredOn, dialNumber, samePhone } from '#lib/phones.js';
@@ -15,13 +15,6 @@ import type { Actions, PageServerLoad } from './$types';
 // weekly night written as a dated row would have to be retyped every week.
 // Everything here is FACTUAL — a call can't vouch for a room, and the database
 // refuses VETTED from any source but attendance.
-
-const RECURRENCES = [
-	{ key: 'WEEKLY', label: 'Weekly' },
-	{ key: 'MONTHLY', label: 'Monthly' },
-	{ key: 'SEASONAL', label: 'Seasonal' },
-	{ key: 'ONE_OFF', label: 'One-off' }
-] as const;
 
 export const load: PageServerLoad = async ({ params, url }) => {
 	const v = await prisma.venue.findUnique({
@@ -56,72 +49,6 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		recurrences: RECURRENCES
 	};
 };
-
-type Night = {
-	eventName: string;
-	category: Category;
-	recurrence: (typeof RECURRENCES)[number]['key'];
-	dayOfWeek: number | null;
-	date: string | null;
-	startTime: string;
-	endTime: string | null;
-	priceGate: number | null;
-	priceAdvance: number | null;
-	runningSince: string | null;
-	lineup: string[];
-	register: Register;
-};
-
-const NIGHT_FIELDS = ['name', 'category', 'recurrence', 'day', 'date', 'start', 'end', 'gate', 'advance', 'since', 'lineup', 'register'];
-
-/** The repeated night blocks, posted as n_name, n_start, … once per block, in order. */
-function nightsFrom(f: FormData, today: string, venueRegister: Register): Night[] {
-	const blocks = f.getAll('n_name').map((_, i) => {
-		const night = new FormData();
-		for (const k of NIGHT_FIELDS) night.set(k, String(f.getAll(`n_${k}`)[i] ?? ''));
-		return night;
-	});
-	// A block left completely empty is just an unused "add another night".
-	const filled = blocks.filter((b) => NIGHT_FIELDS.some((k) => k !== 'recurrence' && k !== 'category' && k !== 'register' && text(b, k)));
-	return filled.map((b, n) => {
-		const at = filled.length > 1 ? ` (night ${n + 1})` : '';
-		const eventName = text(b, 'name');
-		if (!eventName) throw new Invalid(`What’s the night called${at}?`);
-		const category = oneOf(Category, text(b, 'category'), 'category');
-		if (!category) throw new Invalid(`What kind of night is it${at}?`);
-		const recurrence = RECURRENCES.find((r) => r.key === text(b, 'recurrence'))?.key;
-		if (!recurrence) throw new Invalid(`How often does it run${at}?`);
-		// A row without a start time is not a row.
-		const startTime = time(b, 'start', `Start${at}`);
-		if (!startTime) throw new Invalid(`What time does it start${at}? A night without a start time can’t be recorded.`);
-		const standing = recurrence !== 'ONE_OFF';
-		const day = Number(text(b, 'day'));
-		if (standing && !(day >= 1 && day <= 7)) throw new Invalid(`Which day of the week${at}?`);
-		const date = text(b, 'date');
-		if (!standing && !(date && /^\d{4}-\d{2}-\d{2}$/.test(date))) throw new Invalid(`Which date${at}?`);
-		if (!standing && date! < today) throw new Invalid(`That date has passed${at}.`);
-		const since = text(b, 'since') ?? '';
-		return {
-			eventName,
-			category,
-			recurrence,
-			dayOfWeek: standing ? day : null,
-			date: standing ? null : date,
-			startTime,
-			endTime: time(b, 'end', `Wrap${at}`),
-			priceGate: money(b, 'gate', `Gate price${at}`),
-			// A standing night's fee is set once; only a dated row carries an advance price.
-			priceAdvance: standing ? null : money(b, 'advance', `Advance price${at}`),
-			runningSince: standing && /^\d{4}-\d{2}$/.test(since) ? `${since}-01` : null,
-			lineup: (text(b, 'lineup') ?? '')
-				.split(/[,;]/)
-				.map((s) => s.trim())
-				.filter(Boolean),
-			// Question 6 sets the venue's register; a night can say otherwise.
-			register: oneOf(Register, text(b, 'register'), 'register') ?? venueRegister
-		};
-	});
-}
 
 export const actions: Actions = {
 	save: async ({ params, request }) => {
@@ -173,7 +100,7 @@ async function reached(
 	// Who said it: the venue's own people. A call is never attendance.
 	const source: Source = text(f, 'source') === 'OWNER' ? 'OWNER' : 'MANAGER';
 
-	const nights = outcome === 'nights' ? nightsFrom(f, today, register) : [];
+	const nights = outcome === 'nights' ? nightsFrom(f, today, { register, dates: 'ahead' }) : [];
 	if (outcome === 'nights' && !nights.length) throw new Invalid('Add the night they run — or close the call as “runs nothing”.');
 
 	// Reached on the number dialled: it's verified, and goes first.
@@ -181,48 +108,8 @@ async function reached(
 	const numbers = dialled && venue.phones.some((p) => samePhone(p, dialled)) ? { ...answeredOn(venue.phones, dialled), phoneVerifiedAt: now } : {};
 
 	await prisma.$transaction(async (tx) => {
-		for (const n of nights) {
-			const common = {
-				venueId: venue.id,
-				eventName: n.eventName,
-				category: n.category,
-				startTime: n.startTime,
-				endTime: n.endTime,
-				priceGate: n.priceGate,
-				register: n.register,
-				lineup: n.lineup,
-				source,
-				claimType: 'FACTUAL' as const
-			};
-			if (n.recurrence === 'ONE_OFF') {
-				let id = `${slug(n.eventName)}-${n.date}`;
-				if (await tx.occurrence.findUnique({ where: { id } })) id = `${venue.id}-${id}`;
-				await tx.occurrence.create({
-					data: {
-						...common,
-						id,
-						date: asDate(n.date!),
-						priceAdvance: n.priceAdvance,
-						status: 'CONFIRMED',
-						confirmedOn: now,
-						confirmedBy: CALLER_NAME
-					}
-				});
-			} else {
-				let id = `${venue.id}-${slug(n.eventName)}`;
-				if (await tx.residency.findUnique({ where: { id } })) id = `${id}-${n.dayOfWeek}`;
-				await tx.residency.create({
-					data: {
-						...common,
-						id,
-						dayOfWeek: n.dayOfWeek!,
-						recurrence: n.recurrence,
-						runningSince: n.runningSince ? new Date(`${n.runningSince}T00:00:00+03:00`) : null,
-						lastConfirmed: now
-					}
-				});
-			}
-		}
+		// The nights, through the same code as "write up a night out": confirmed by this call.
+		await createNights(tx, venue.id, nights, { source, confirmed: { at: now, by: CALLER_NAME } });
 		await tx.venue.update({
 			where: { id: venue.id },
 			data: {

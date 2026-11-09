@@ -7,7 +7,7 @@
 	import HomeLogo from '#lib/components/HomeLogo.svelte';
 	import ThisWeek from '#lib/components/ThisWeek.svelte';
 	import { Q6 } from '#lib/build/calls.js';
-	import { DAYS } from '#lib/build/add.js';
+	import NightBlock from '#lib/components/NightBlock.svelte';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -112,7 +112,6 @@
 		</section>
 
 		{#each nights as n, i (n.id)}
-			{@const standing = n.recurrence !== 'ONE_OFF'}
 			<section class="panel space-y-3">
 				<div class="flex items-center justify-between">
 					<h2 class="font-semibold">Night {i + 1}</h2>
@@ -120,56 +119,13 @@
 						<button type="button" class="text-xs text-dim hover:text-energy" onclick={() => (nights = nights.filter((x) => x.id !== n.id))}>remove</button>
 					{/if}
 				</div>
-				<div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_170px_150px]">
-					<label class="field"><span>Event name</span><input name="n_name" class="input h-10" placeholder="Acoustic Thursdays" /></label>
-					<label class="field"><span>Category</span>
-						<select name="n_category" class="input h-10">
-							<option value="">—</option>
-							{#each data.categories as c (c)}<option value={c}>{c.replaceAll('_', ' ').toLowerCase()}</option>{/each}
-						</select>
-					</label>
-					<label class="field"><span>How often</span>
-						<select name="n_recurrence" class="input h-10" bind:value={n.recurrence}>
-							{#each data.recurrences as r (r.key)}<option value={r.key}>{r.label}</option>{/each}
-						</select>
-					</label>
-				</div>
-				<div class="grid gap-3 sm:grid-cols-4">
-					{#if standing}
-						<label class="field"><span>Day</span>
-							<select name="n_day" class="input h-10">
-								<option value="">—</option>
-								{#each [1, 2, 3, 4, 5, 6, 7] as d (d)}<option value={d}>{DAYS[d]}</option>{/each}
-							</select>
-						</label>
-						<input type="hidden" name="n_date" value="" />
-					{:else}
-						<label class="field"><span>Date</span><input name="n_date" type="date" min={data.today} class="input h-10" /></label>
-						<input type="hidden" name="n_day" value="" />
-					{/if}
-					<label class="field"><span>Starts <span class="text-energy">*</span></span><input name="n_start" class="input h-10 font-mono" placeholder="21:00" /></label>
-					<label class="field"><span>Ends</span><input name="n_end" class="input h-10 font-mono" placeholder="02:00" /></label>
-					<label class="field"><span>Register</span>
-						<select name="n_register" class="input h-10">
-							<option value="">{register ? `as Q6: ${LABEL[register]}` : 'as Q6'}</option>
-							{#each Object.keys(LABEL) as r (r)}<option value={r}>{LABEL[r]}</option>{/each}
-						</select>
-					</label>
-				</div>
-				<div class="grid gap-3 sm:grid-cols-4">
-					<label class="field"><span>Gate price</span><input name="n_gate" class="input h-10 font-mono" placeholder="0 = free" /></label>
-					{#if standing}
-						<label class="field"><span>Running since</span><input name="n_since" type="month" class="input h-10" /></label>
-						<input type="hidden" name="n_advance" value="" />
-					{:else}
-						<label class="field"><span>Advance price</span><input name="n_advance" class="input h-10 font-mono" /></label>
-						<input type="hidden" name="n_since" value="" />
-					{/if}
-					<label class="field sm:col-span-2"><span>Lineup</span><input name="n_lineup" class="input h-10" placeholder="The Clan Band, DJ Smallz" /></label>
-				</div>
-				<p class="text-[11px] text-dim">
-					{standing ? 'Saved as a standing night — it appears every week without being typed again.' : 'Saved as a dated one-off.'}
-				</p>
+				<NightBlock
+					categories={data.categories}
+					recurrences={data.recurrences}
+					bind:recurrence={n.recurrence}
+					dateMin={data.today}
+					registerDefault={register ? `as Q6: ${LABEL[register]}` : 'as Q6'}
+				/>
 			</section>
 		{/each}
 		<button type="button" class="btn h-10" onclick={() => (nights = [...nights, { id: next++, recurrence: 'WEEKLY' }])}>+ Add another night</button>
