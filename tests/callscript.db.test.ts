@@ -132,13 +132,26 @@ test('category saves, and the question is gone from the next call to that venue'
 		assert.equal((await tx.residency.findUniqueOrThrow({ where: { id: r.id } })).register, 'HIGH_ENERGY'); // a tag, never the mood
 	}));
 
+test('"they have none" is stored, and the offers question is gone from the next call', () =>
+	rolledBack(async (tx) => {
+		const { v, r } = await setup(tx, 'no-offers');
+		const f = call({ mode: 'standing', residencyId: r.id }, []);
+		f.set('perk_none', '1');
+		await save(v.id, f);
+		const after = await tx.residency.findUniqueOrThrow({ where: { id: r.id } });
+		assert.ok(after.offersAskedAt);
+		assert.equal(await tx.perk.count({ where: { residencyId: r.id } }), 0);
+		const next: any = await (load as any)({ params: { venueId: v.id }, url: new URL(`http://x/calls/${v.id}?ref=${r.id}`) });
+		assert.ok(!notAsked({ kind: 'standing', ...next.residencies[0] }, next.venue).has('perks'));
+	}));
+
 test('a call saves with every new field left blank, and blanks nothing', () =>
 	rolledBack(async (tx) => {
 		const { v, r } = await setup(tx, 'blank');
 		await tx.residency.update({ where: { id: r.id }, data: { priceGate: 20000, startTime: '21:00' } });
 		await save(v.id, call({ mode: 'standing', residencyId: r.id }, []));
 		const after = await tx.residency.findUniqueOrThrow({ where: { id: r.id } });
-		assert.deepEqual([after.priceGate, after.priceAdvance, after.startTime, after.category, after.categoryAskedAt], [20000, null, '21:00', 'THEMED_NIGHT', null]);
+		assert.deepEqual([after.priceGate, after.priceAdvance, after.startTime, after.category, after.categoryAskedAt, after.offersAskedAt], [20000, null, '21:00', 'THEMED_NIGHT', null, null]);
 		assert.equal(await tx.perk.count({ where: { residencyId: r.id } }), 0);
 		assert.ok(after.lastConfirmed);
 	}));

@@ -11,7 +11,7 @@ import { Category, Register } from '../../generated/prisma/enums';
 import type { Tx } from './db.js';
 import { Invalid, money, oneOf, slug, text, time } from './forms.js';
 import { asDate } from './register.js';
-import { addPerks, parsePerks, type ParsedPerk } from './perks.js';
+import { addPerks, offersAnswered, parsePerks, type ParsedPerk } from './perks.js';
 import { addDays } from '../build/week.js';
 import { isoDay } from '../build/add.js';
 
@@ -36,6 +36,7 @@ export type Night = {
 	lineup: string[];
 	register: RegisterT;
 	perks: ParsedPerk[]; // weekly or one-off with the night itself
+	offersAnswered: boolean; // an offer, or "they have none"
 };
 
 const FIELDS = ['name', 'category', 'recurrence', 'day', 'date', 'start', 'end', 'gate', 'advance', 'since', 'lineup', 'register'];
@@ -54,11 +55,11 @@ export function nightsFrom(f: FormData, today: string, opts: { register: Registe
 		const night = new FormData();
 		for (const k of FIELDS) night.set(k, String(f.getAll(`n_${k}`)[i] ?? ''));
 		const from = counts.slice(0, i).reduce((a, c) => a + c, 0);
-		return { b: night, perks: parsePerks(f, 'n_perk', { from, count: counts[i] ?? 0 }) ?? [] };
+		return { b: night, perks: parsePerks(f, 'n_perk', { from, count: counts[i] ?? 0 }) ?? [], none: f.getAll('n_perk_none')[i] };
 	});
 	// A block left completely empty is just an unused "add another night".
 	const filled = blocks.filter(({ b, perks }) => perks.length || FIELDS.some((k) => k !== 'recurrence' && k !== 'category' && k !== 'register' && text(b, k)));
-	return filled.map(({ b, perks }, n) => {
+	return filled.map(({ b, perks, none }, n) => {
 		const at = filled.length > 1 ? ` (night ${n + 1})` : '';
 		const eventName = text(b, 'name');
 		if (!eventName) throw new Invalid(`What’s the night called${at}?`);
@@ -99,7 +100,8 @@ export function nightsFrom(f: FormData, today: string, opts: { register: Registe
 				.map((s) => s.trim())
 				.filter(Boolean),
 			register,
-			perks
+			perks,
+			offersAnswered: offersAnswered(perks, none)
 		};
 	});
 }
@@ -133,7 +135,8 @@ export async function createNights(
 			register: n.register,
 			lineup: n.lineup,
 			source: how.source,
-			claimType: how.source ? ('FACTUAL' as const) : null
+			claimType: how.source ? ('FACTUAL' as const) : null,
+			offersAskedAt: n.offersAnswered ? (how.confirmed?.at ?? new Date()) : null
 		};
 		if (n.recurrence === 'ONE_OFF') {
 			let id = `${slug(n.eventName)}-${n.date}`;

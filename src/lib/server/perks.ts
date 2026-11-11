@@ -57,6 +57,9 @@ export function parsePerks(f: FormData, prefix = 'perk', rows?: { from: number; 
 		});
 }
 
+/** Whether the offers question got an answer: an offer, or "they have none". */
+export const offersAnswered = (perks: ParsedPerk[] | null, none: FormDataEntryValue | null | undefined) => !!perks?.length || none === '1';
+
 const columns = ({ scope: _scope, confirmed, ...p }: Omit<ParsedPerk, 'id'>, by: Confirmed) => ({
 	...p,
 	...(confirmed && by && { confirmedOn: by.at, confirmedBy: by.by })

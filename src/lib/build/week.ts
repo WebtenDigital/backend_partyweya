@@ -29,6 +29,9 @@ export type Perk = Pick<PerkIn, 'kind' | 'label' | 'condition' | 'activeUntil'>;
  * running on THAT row's date — a perk ending Thursday never reaches Saturday.
  */
 export function resolvePerks(date: string, own: PerkIn[] | null, rule: PerkIn[]): Perk[] {
+	// A known limit, not a bug: adding can't express a weekly offer SUSPENDED for
+	// one date ("no happy hour this Friday, but there's a special") — both show.
+	// Rare enough to live with; an activeUntil on the weekly one is the workaround.
 	const byOrder = (list: PerkIn[]) => [...list].sort((a, b) => a.sortOrder - b.sortOrder);
 	const key = (p: PerkIn) => `${p.kind}|${p.label.trim().toLowerCase()}`;
 	const seen = new Set<string>();

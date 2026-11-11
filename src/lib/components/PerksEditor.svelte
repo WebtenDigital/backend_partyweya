@@ -53,6 +53,9 @@
 	} = $props();
 
 	const KINDS = ['FOOD', 'DRINK', 'ENTRY', 'OTHER'];
+	// "Anything that comes with it?" — "no" is an answer, recorded, so it isn't asked again next call.
+	let none = $state(false);
+	const offered = $derived(rows.some((r) => r.label.trim()));
 	const add = () =>
 		rows.push({ id: null, kind: 'DRINK', label: '', condition: '', activeUntil: '', scope: scope?.start, confirmed: true });
 	const pickers: HTMLInputElement[] = [];
@@ -70,6 +73,7 @@
 <div class="space-y-2">
 	<input type="hidden" name="{prefix}s_sent" value="1" />
 	<input type="hidden" name="{prefix}_count" value={rows.length} />
+	<input type="hidden" name="{prefix}_none" value={none && !offered ? '1' : ''} />
 	{#each rows as row, i (i)}
 		{@const expired = !!row.activeUntil && row.activeUntil < today}
 		{@const ending = !expired && !!row.activeUntil && !!weekEnd && row.activeUntil <= weekEnd}
@@ -160,5 +164,15 @@
 			{/if}
 		</div>
 	{/each}
-	<button type="button" class="h-11 rounded-md border border-dashed border-line px-3 text-sm text-dim hover:border-dim hover:text-fg" onclick={add}>+ Add an offer</button>
+	<div class="flex flex-wrap gap-2">
+		<button type="button" class="h-11 rounded-md border border-dashed border-line px-3 text-sm text-dim hover:border-dim hover:text-fg" onclick={add}>+ Add an offer</button>
+		{#if confirm && !offered}
+			<button
+				type="button"
+				class="h-11 rounded-md border px-3 text-sm {none ? 'border-vetted text-vetted' : 'border-line text-dim hover:border-dim hover:text-fg'}"
+				aria-pressed={none}
+				onclick={() => (none = !none)}>{none ? '✓ They have none' : 'They have none'}</button
+			>
+		{/if}
+	</div>
 </div>

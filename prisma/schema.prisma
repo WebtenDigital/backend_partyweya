@@ -304,6 +304,7 @@ model Residency {
   category        Category
   categoryAskedAt DateTime? // when the venue said what kind of night it is (or we saw it);
   //                           null = the category was inferred (the import, the name)
+  offersAskedAt   DateTime? // when "anything that comes with it?" was answered — "nothing" included
   dayOfWeek Int //        1 = Monday … 7 = Sunday
   startTime String? //    "19:00" — local wall-clock, no timezone arithmetic.
   //                      Nullable: 9 of 20 standing nights don't have it yet.
@@ -390,6 +391,7 @@ model Occurrence {
   priceGate    Int?
   priceAdvance Int? //    must be cheaper than priceGate — checked in SQL below
   priceNote    String? // "165K PRE | 190K AT THE GATE" — the tiers as advertised
+  offersAskedAt DateTime? // as Residency's: "no offers" is an answer, not a gap
 
   lineup   String[]  @default([]) // the billing that night, in order; empty = the standing night's
   register Register?

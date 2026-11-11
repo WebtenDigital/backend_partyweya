@@ -16,6 +16,12 @@ test('a field with an answer is not flagged — and a free night (gate 0) is an 
 	assert.deepEqual([...notAsked(night, { conversationTest: 'NO', contactName: 'Moses', contactRole: 'MANAGER' })], []);
 });
 
+test('"no offers" is an answer: recorded, it stops being asked', () => {
+	assert.ok(notAsked(blank, nobody).has('perks'));
+	assert.ok(!notAsked({ ...blank, offersAskedAt: '2026-11-11' }, nobody).has('perks'));
+	assert.ok(!notAsked({ ...blank, perks: [{}] }, nobody).has('perks')); // offers already on file answer it too
+});
+
 test('category: asked once of a standing night, then gone; a dated night asks it every time', () => {
 	assert.ok(notAsked(blank, nobody).has('category'));
 	assert.ok(!notAsked({ ...blank, categoryAskedAt: '2026-11-11' }, nobody).has('category'));

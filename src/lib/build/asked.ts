@@ -30,6 +30,7 @@ export interface AskedNight {
 	priceGate: number | null;
 	priceAdvance: number | null;
 	perks: unknown[];
+	offersAskedAt?: string | null; //  answered, "none" included
 	categoryAskedAt?: string | null; // a standing night's; a dated night's category is asked every time
 	runningSince?: string | null; //   a standing night's
 	lineup: string[];
@@ -46,7 +47,9 @@ export function notAsked(night: AskedNight | null, venue: AskedVenue): Set<CallO
 	const gaps = new Set<CallOwned>();
 	const empty = (v: unknown) => v == null || v === '' || (Array.isArray(v) && v.length === 0);
 	if (night) {
-		for (const k of ['startTime', 'endTime', 'priceGate', 'priceAdvance', 'perks', 'lineup'] as const) if (empty(night[k])) gaps.add(k);
+		for (const k of ['startTime', 'endTime', 'priceGate', 'priceAdvance', 'lineup'] as const) if (empty(night[k])) gaps.add(k);
+		// Offers on file answer it; so does "none", which only offersAskedAt can hold.
+		if (empty(night.offersAskedAt) && empty(night.perks)) gaps.add('perks');
 		if (night.kind === 'standing') {
 			if (empty(night.categoryAskedAt)) gaps.add('category');
 			if (empty(night.runningSince)) gaps.add('runningSince');

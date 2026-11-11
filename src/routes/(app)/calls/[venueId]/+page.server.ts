@@ -12,7 +12,7 @@ import type { ClaimType } from '#lib/server/prisma.js';
 import type { Tx } from '#lib/server/db.js';
 import { asDate, isWeek, isoDate, kampalaDate } from '#lib/server/register.js';
 import { Q6 } from '#lib/build/calls.js';
-import { addPerks, parsePerks, savePerks } from '#lib/server/perks.js';
+import { addPerks, offersAnswered, parsePerks, savePerks } from '#lib/server/perks.js';
 import { lineupFrom, lineupSuggestions, newActsParam, unclassified } from '#lib/server/acts.js';
 import { Invalid, failureMessage, money, oneOf, phoneList, slug, text, time } from '#lib/server/forms.js';
 import { answeredOn, dialNumber, samePhone, withPhones } from '#lib/phones.js';
@@ -113,6 +113,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			endTime: r.endTime,
 			priceGate: r.priceGate,
 			priceAdvance: r.priceAdvance,
+			offersAskedAt: kampalaDate(r.offersAskedAt),
 			register: r.register,
 			attendedAt: r.attendedAt ? isoDate(r.attendedAt) : null,
 			source: r.source,
@@ -134,6 +135,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			endTime: o.endTime,
 			priceGate: o.priceGate,
 			priceAdvance: o.priceAdvance,
+			offersAskedAt: kampalaDate(o.offersAskedAt),
 			priceNote: o.priceNote,
 			lineup: o.lineup,
 			register: o.register,
@@ -298,6 +300,7 @@ export const actions: Actions = {
 				// An offer heard on this call is confirmed by it — its own date, not the night's.
 				const heard = { at: now, by: CALLER_NAME };
 				const offers = parsePerks(f);
+				const answered = offersAnswered(offers, f.get('perk_none')) && { offersAskedAt: now };
 
 				// Question 8 — who to call about this night from now on. Reroutes every future call.
 				const q8 = await organiserFrom(tx, f, 'q8');
@@ -333,6 +336,7 @@ export const actions: Actions = {
 							...(text(f, 's_gate') && { priceGate: gate }),
 							...(text(f, 's_advance') && { priceAdvance: advance }),
 							...(category && { category, categoryAskedAt: now }),
+							...answered,
 							...(sLineup?.length && { lineup: sLineup }),
 							// Question 4: how long has it been running? Skippable; the month, as discovery takes it.
 							...(/^\d{4}-\d{2}$/.test(text(f, 's_since') ?? '') && { runningSince: new Date(`${text(f, 's_since')}-01T00:00:00+03:00`) }),
@@ -383,6 +387,7 @@ export const actions: Actions = {
 						status: 'CONFIRMED' as const,
 						confirmedOn: now,
 						confirmedBy: CALLER_NAME,
+						...answered,
 						...routed,
 						...(await provenance(lineup.length ? lineup : (standing?.lineup ?? []), stored?.source ?? null))
 					};
