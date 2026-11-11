@@ -11,6 +11,7 @@ import { Category, Register } from '../../generated/prisma/enums';
 import type { Tx } from './db.js';
 import { Invalid, money, oneOf, slug, text, time } from './forms.js';
 import { asDate } from './register.js';
+import { addPerks, parsePerks, type ParsedPerk } from './perks.js';
 import { addDays } from '../build/week.js';
 import { isoDay } from '../build/add.js';
 
@@ -34,6 +35,7 @@ export type Night = {
 	runningSince: string | null;
 	lineup: string[];
 	register: RegisterT;
+	perks: ParsedPerk[]; // weekly or one-off with the night itself
 };
 
 const FIELDS = ['name', 'category', 'recurrence', 'day', 'date', 'start', 'end', 'gate', 'advance', 'since', 'lineup', 'register'];
@@ -46,14 +48,17 @@ const FIELDS = ['name', 'category', 'recurrence', 'day', 'date', 'start', 'end',
  * call; on a night out there is none, so each block must say.
  */
 export function nightsFrom(f: FormData, today: string, opts: { register: RegisterT | null; dates: 'ahead' | 'fortnight' }): Night[] {
+	// Each block's offers are its run of n_perk_* rows; n_perk_count says how many.
+	const counts = f.getAll('n_perk_count').map(Number);
 	const blocks = f.getAll('n_name').map((_, i) => {
 		const night = new FormData();
 		for (const k of FIELDS) night.set(k, String(f.getAll(`n_${k}`)[i] ?? ''));
-		return night;
+		const from = counts.slice(0, i).reduce((a, c) => a + c, 0);
+		return { b: night, perks: parsePerks(f, 'n_perk', { from, count: counts[i] ?? 0 }) ?? [] };
 	});
 	// A block left completely empty is just an unused "add another night".
-	const filled = blocks.filter((b) => FIELDS.some((k) => k !== 'recurrence' && k !== 'category' && k !== 'register' && text(b, k)));
-	return filled.map((b, n) => {
+	const filled = blocks.filter(({ b, perks }) => perks.length || FIELDS.some((k) => k !== 'recurrence' && k !== 'category' && k !== 'register' && text(b, k)));
+	return filled.map(({ b, perks }, n) => {
 		const at = filled.length > 1 ? ` (night ${n + 1})` : '';
 		const eventName = text(b, 'name');
 		if (!eventName) throw new Invalid(`What’s the night called${at}?`);
@@ -74,6 +79,10 @@ export function nightsFrom(f: FormData, today: string, opts: { register: Registe
 		const register = oneOf(Register, text(b, 'register'), 'register') ?? opts.register;
 		if (!register) throw new Invalid(`Which register was it${at}?`);
 		const since = text(b, 'since') ?? '';
+		const priceGate = money(b, 'gate', `Gate price${at}`);
+		const priceAdvance = money(b, 'advance', `Advance price${at}`);
+		if (priceGate != null && priceAdvance != null && priceAdvance >= priceGate)
+			throw new Invalid(`The advance price${at} has to be cheaper than the gate — or it isn’t an advance price.`);
 		return {
 			eventName,
 			category,
@@ -82,15 +91,15 @@ export function nightsFrom(f: FormData, today: string, opts: { register: Registe
 			date: standing ? null : date,
 			startTime,
 			endTime: time(b, 'end', `Wrap${at}`),
-			priceGate: money(b, 'gate', `Gate price${at}`),
-			// A standing night's fee is set once; only a dated row carries an advance price.
-			priceAdvance: standing ? null : money(b, 'advance', `Advance price${at}`),
+			priceGate,
+			priceAdvance,
 			runningSince: standing && /^\d{4}-\d{2}$/.test(since) ? `${since}-01` : null,
 			lineup: (text(b, 'lineup') ?? '')
 				.split(/[,;]/)
 				.map((s) => s.trim())
 				.filter(Boolean),
-			register
+			register,
+			perks
 		};
 	});
 }
@@ -120,6 +129,7 @@ export async function createNights(
 			startTime: n.startTime,
 			endTime: n.endTime,
 			priceGate: n.priceGate,
+			priceAdvance: n.priceAdvance,
 			register: n.register,
 			lineup: n.lineup,
 			source: how.source,
@@ -133,10 +143,10 @@ export async function createNights(
 					...common,
 					id,
 					date: asDate(n.date!),
-					priceAdvance: n.priceAdvance,
 					...(how.confirmed ? { status: 'CONFIRMED', confirmedOn: how.confirmed.at, confirmedBy: how.confirmed.by } : { status: 'LEAD' })
 				}
 			});
+			await addPerks(db, { occurrenceId: id }, n.perks, how.confirmed);
 			made.push({ kind: 'occurrence', ref: id, night: n });
 		} else {
 			let id = `${venueId}-${slug(n.eventName)}`;
@@ -148,9 +158,12 @@ export async function createNights(
 					dayOfWeek: n.dayOfWeek!,
 					recurrence: n.recurrence,
 					runningSince: n.runningSince ? new Date(`${n.runningSince}T00:00:00+03:00`) : null,
+					// Said on the call, or seen in the room — either way not inferred.
+					categoryAskedAt: how.confirmed?.at ?? new Date(),
 					lastConfirmed: how.confirmed?.at ?? null
 				}
 			});
+			await addPerks(db, { residencyId: id }, n.perks, how.confirmed);
 			made.push({ kind: 'residency', ref: id, night: n });
 		}
 	}

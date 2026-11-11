@@ -50,6 +50,7 @@
 				bind:recurrence
 				dateMin={data.earliest}
 				dateMax={data.today}
+				today={data.today}
 				registerRequired
 			/>
 		</section>

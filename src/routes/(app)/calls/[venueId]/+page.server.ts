@@ -8,13 +8,15 @@ import {
 	Register,
 	Source
 } from '#lib/server/prisma.js';
+import type { ClaimType } from '#lib/server/prisma.js';
+import type { Tx } from '#lib/server/db.js';
 import { asDate, isWeek, isoDate, kampalaDate } from '#lib/server/register.js';
 import { Q6 } from '#lib/build/calls.js';
-import { savePerks } from '#lib/server/perks.js';
+import { addPerks, parsePerks, savePerks } from '#lib/server/perks.js';
 import { lineupFrom, lineupSuggestions, newActsParam, unclassified } from '#lib/server/acts.js';
 import { Invalid, failureMessage, money, oneOf, phoneList, slug, text, time } from '#lib/server/forms.js';
 import { answeredOn, dialNumber, samePhone, withPhones } from '#lib/phones.js';
-import { kampalaToday, nextMonday } from '#lib/build/week.js';
+import { addDays, kampalaToday, nextMonday } from '#lib/build/week.js';
 import { reminders } from '#lib/server/reminders.js';
 import { describeVenueTier, type Night } from '#lib/server/tier.js';
 import { organiserFrom, organiserOptions } from '#lib/server/organisers.js';
@@ -23,12 +25,13 @@ import { lineupTransfers } from '#lib/server/provenance.js';
 import { whoToCall, type NightContact, type Who } from '#lib/build/who.js';
 import type { Actions, PageServerLoad } from './$types';
 
-const editablePerk = (p: { id: string; kind: string; label: string; condition: string | null; activeUntil: Date | null }) => ({
+const editablePerk = (p: { id: string; kind: string; label: string; condition: string | null; activeUntil: Date | null; confirmedOn: Date | null }) => ({
 	id: p.id,
 	kind: p.kind,
 	label: p.label,
 	condition: p.condition,
-	activeUntil: kampalaDate(p.activeUntil)
+	activeUntil: kampalaDate(p.activeUntil),
+	confirmedOn: kampalaDate(p.confirmedOn)
 });
 
 export const load: PageServerLoad = async ({ params, url }) => {
@@ -88,6 +91,8 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			bestTimeToReach: venue.bestTimeToReach,
 			conversationTest: venue.conversationTest,
 			provisionalRegister: venue.provisionalRegister,
+			register: venue.register, //  judged in the room — only a write-up sets it
+			registerJudgedAt: kampalaDate(venue.registerJudgedAt),
 			lastContacted: kampalaDate(venue.lastContacted),
 			lastAttended: kampalaDate(venue.lastAttended),
 			// Venue-level, derived: does any night here clear? (The verdict is per night.)
@@ -101,11 +106,16 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		residencies: venue.residencies.map((r) => ({
 			id: r.id,
 			eventName: r.eventName,
+			category: r.category,
+			categoryAskedAt: kampalaDate(r.categoryAskedAt),
 			dayOfWeek: r.dayOfWeek,
 			startTime: r.startTime,
 			endTime: r.endTime,
 			priceGate: r.priceGate,
+			priceAdvance: r.priceAdvance,
 			register: r.register,
+			attendedAt: r.attendedAt ? isoDate(r.attendedAt) : null,
+			source: r.source,
 			lastConfirmed: kampalaDate(r.lastConfirmed),
 			runningSince: kampalaDate(r.runningSince),
 			lineup: r.lineup,
@@ -277,13 +287,17 @@ export const actions: Actions = {
 				}
 				if (!reached) return;
 
-				// Question 6 classes the room, so every standing night here takes its answer.
+				// Question 6 classes the room, so every standing night here takes its answer —
+				// except one we have stood in: the room's judgement outranks a phone answer.
 				if (register && callee === 'venue') {
 					await tx.residency.updateMany({
-						where: { venueId: venue.id, active: true },
+						where: { venueId: venue.id, active: true, attendedAt: null },
 						data: { register }
 					});
 				}
+				// An offer heard on this call is confirmed by it — its own date, not the night's.
+				const heard = { at: now, by: CALLER_NAME };
+				const offers = parsePerks(f);
 
 				// Question 8 — who to call about this night from now on. Reroutes every future call.
 				const q8 = await organiserFrom(tx, f, 'q8');
@@ -299,16 +313,26 @@ export const actions: Actions = {
 				if (mode === 'standing') {
 					const id = text(f, 'residencyId');
 					if (!id) throw new Invalid('Pick the standing night you fixed.');
-					const rule = await tx.residency.findFirst({ where: { id, venueId: venue.id }, select: { lineup: true, source: true } });
+					const rule = await tx.residency.findFirst({
+						where: { id, venueId: venue.id },
+						select: { lineup: true, source: true, priceGate: true, priceAdvance: true, dayOfWeek: true, eventName: true, category: true }
+					});
 					if (!rule) throw new Invalid('That standing night isn’t at this venue.');
 					const sLineup = lineupFrom(f, 's_lineup');
+					const gate = text(f, 's_gate') ? money(f, 's_gate', 'Gate price') : rule.priceGate;
+					const advance = text(f, 's_advance') ? money(f, 's_advance', 'Advance price') : rule.priceAdvance;
+					if (gate != null && advance != null && advance >= gate) throw new Invalid('The advance price has to be cheaper than the gate — or it isn’t an advance price.');
+					// Question 5, asked only while the category is still an inference.
+					const category = oneOf(Category, text(f, 's_category'), 'category');
 					await tx.residency.update({
 						where: { id, venueId: venue.id },
 						data: {
 							// Only what the call supplied; a blank field leaves the rule's value alone.
 							...(text(f, 's_start') && { startTime: time(f, 's_start', 'Start') }),
 							...(text(f, 's_end') && { endTime: time(f, 's_end', 'Wrap') }),
-							...(text(f, 's_gate') && { priceGate: money(f, 's_gate', 'Gate price') }),
+							...(text(f, 's_gate') && { priceGate: gate }),
+							...(text(f, 's_advance') && { priceAdvance: advance }),
+							...(category && { category, categoryAskedAt: now }),
 							...(sLineup?.length && { lineup: sLineup }),
 							// Question 4: how long has it been running? Skippable; the month, as discovery takes it.
 							...(/^\d{4}-\d{2}$/.test(text(f, 's_since') ?? '') && { runningSince: new Date(`${text(f, 's_since')}-01T00:00:00+03:00`) }),
@@ -318,7 +342,18 @@ export const actions: Actions = {
 							...(await provenance(sLineup?.length ? sLineup : rule.lineup, rule.source))
 						}
 					});
-					await savePerks(tx, { residencyId: id }, f);
+					// "Every week, or just this one?" Weekly offers are the rule's; a one-off goes on
+					// this week's date of it — never the other way round.
+					if (offers) {
+						await savePerks(tx, { residencyId: id }, offers.filter((p) => p.scope !== 'once'), heard);
+						const once = offers.filter((p) => p.scope === 'once');
+						if (once.length) {
+							const date = addDays(isWeek(week) ? week : nextMonday(today), rule.dayOfWeek - 1);
+							const after = await tx.residency.findUniqueOrThrow({ where: { id }, select: { source: true, claimType: true } });
+							const occurrenceId = await thisDate(tx, { residencyId: id, venueId: venue.id, date, eventName: rule.eventName, category: category ?? rule.category, ...after }, now);
+							await addPerks(tx, { occurrenceId }, once, heard);
+						}
+					}
 				}
 
 				if (mode === 'dated') {
@@ -352,14 +387,17 @@ export const actions: Actions = {
 						...(await provenance(lineup.length ? lineup : (standing?.lineup ?? []), stored?.source ?? null))
 					};
 					if (existing && existing !== 'new') {
-						await tx.occurrence.update({ where: { id: existing, venueId: venue.id }, data: fields });
-						await savePerks(tx, { occurrenceId: existing }, f);
+						const o = await tx.occurrence.update({ where: { id: existing, venueId: venue.id }, data: fields, select: { residencyId: true } });
+						// On a standing night's date, an offer can be every week's — then it's the rule's.
+						const weekly = o.residencyId ? (offers ?? []).filter((p) => p.scope === 'weekly') : [];
+						await savePerks(tx, { occurrenceId: existing }, offers && offers.filter((p) => !weekly.includes(p)), heard);
+						if (weekly.length) await addPerks(tx, { residencyId: o.residencyId! }, weekly, heard);
 					} else {
 						// Readable ids, like the sheet's: the-silo-daycation-2026-10-25
 						let id = `${slug(eventName)}-${date}`;
 						if (await tx.occurrence.findUnique({ where: { id } })) id = `${venue.id}-${id}`;
 						await tx.occurrence.create({ data: { id, venueId: venue.id, ...fields } });
-						await savePerks(tx, { occurrenceId: id }, f);
+						await savePerks(tx, { occurrenceId: id }, offers, heard);
 					}
 				}
 			});
@@ -374,3 +412,37 @@ export const actions: Actions = {
 		redirect(303, `/calls?week=${isWeek(week) ? week : nextMonday(today)}${newActsParam(await unclassified(billed))}`);
 	}
 };
+
+/**
+ * The dated row for one date of a standing night, for an offer that holds that
+ * date only. Usually it already exists; otherwise an override carrying nothing
+ * of its own — every blank field falls through to the rule (buildWeek) — and
+ * confirmed by this call, as the rule just was, so the date doesn't drop to
+ * unconfirmed for want of a row.
+ */
+async function thisDate(
+	tx: Tx,
+	n: { residencyId: string; venueId: string; date: string; eventName: string; category: Category; source: Source | null; claimType: ClaimType | null },
+	now: Date
+) {
+	const found = await tx.occurrence.findFirst({ where: { residencyId: n.residencyId, date: asDate(n.date) }, select: { id: true } });
+	if (found) return found.id;
+	let id = `${n.residencyId}-${n.date}`;
+	if (await tx.occurrence.findUnique({ where: { id } })) id = `${id}-offer`;
+	await tx.occurrence.create({
+		data: {
+			id,
+			venueId: n.venueId,
+			residencyId: n.residencyId,
+			date: asDate(n.date),
+			eventName: n.eventName,
+			category: n.category,
+			source: n.source,
+			claimType: n.claimType,
+			status: 'CONFIRMED',
+			confirmedOn: now,
+			confirmedBy: CALLER_NAME
+		}
+	});
+	return id;
+}

@@ -300,15 +300,18 @@ model Residency {
   bookingPhone     String?
   bookingPhoneNote String? // "for reservations", "VIP tables", "advance only"
 
-  eventName String
-  category  Category
+  eventName       String
+  category        Category
+  categoryAskedAt DateTime? // when the venue said what kind of night it is (or we saw it);
+  //                           null = the category was inferred (the import, the name)
   dayOfWeek Int //        1 = Monday … 7 = Sunday
   startTime String? //    "19:00" — local wall-clock, no timezone arithmetic.
   //                      Nullable: 9 of 20 standing nights don't have it yet.
   endTime   String?
 
-  priceGate Int? //       renamed from costGate. There is no priceAdvance here:
-  //                      a residency fee is set once and never changed.
+  priceGate    Int? //    renamed from costGate
+  priceAdvance Int? //    back since 11 Nov 2026: the call script asks it (question 3) of
+  //                      standing nights too. Cheaper than priceGate — checked in SQL.
 
   register Register //    REQUIRED, deliberately. This is the field Rule F4
   //                      (mood balance) depends on, and the one that has drifted
@@ -534,6 +537,8 @@ model Perk {
   label        String //    "Half-price cocktails"
   condition    String? //   "before 9pm"
   activeUntil  DateTime? // last day it holds; null = until told otherwise
+  confirmedOn  DateTime? // its OWN confirmation: a quiz holds for years, a spirits deal a season
+  confirmedBy  String? //   CALLER_NAME, like the night's confirmedBy
   sortOrder    Int         @default(0)
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @default(now()) @updatedAt

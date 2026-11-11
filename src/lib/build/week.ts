@@ -23,15 +23,18 @@ export interface PerkIn {
 export type Perk = Pick<PerkIn, 'kind' | 'label' | 'condition' | 'activeUntil'>;
 
 /**
- * The offers a row carries: a dated row's own perks replace the standing
- * night's entirely; otherwise the rule's apply. Either way, only those still
+ * The offers a row carries: the standing night's, then any of the dated row's
+ * own — a one-off offer ("just this week") is in addition to the weekly ones,
+ * not instead of them. The same offer on both is listed once. Only those still
  * running on THAT row's date — a perk ending Thursday never reaches Saturday.
  */
 export function resolvePerks(date: string, own: PerkIn[] | null, rule: PerkIn[]): Perk[] {
-	const source = own && own.length ? own : rule;
-	return source
+	const byOrder = (list: PerkIn[]) => [...list].sort((a, b) => a.sortOrder - b.sortOrder);
+	const key = (p: PerkIn) => `${p.kind}|${p.label.trim().toLowerCase()}`;
+	const seen = new Set<string>();
+	return [...byOrder(rule), ...byOrder(own ?? [])]
 		.filter((p) => p.activeUntil == null || p.activeUntil >= date)
-		.sort((a, b) => a.sortOrder - b.sortOrder)
+		.filter((p) => !seen.has(key(p)) && !!seen.add(key(p)))
 		.map(({ kind, label, condition, activeUntil }) => ({ kind, label, condition, activeUntil }));
 }
 

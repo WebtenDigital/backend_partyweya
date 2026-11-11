@@ -124,6 +124,8 @@
 					recurrences={data.recurrences}
 					bind:recurrence={n.recurrence}
 					dateMin={data.today}
+					today={data.today}
+					confirmOffers
 					registerDefault={register ? `as Q6: ${LABEL[register]}` : 'as Q6'}
 				/>
 			</section>

@@ -6,6 +6,8 @@
 	import LineupInput from '#lib/components/LineupInput.svelte';
 	import Reminders from '#lib/components/Reminders.svelte';
 	import OrganiserPicker from '#lib/components/OrganiserPicker.svelte';
+	import NotAsked from '#lib/components/NotAsked.svelte';
+	import { notAsked, originLabel, registerOrigin } from '#lib/build/asked.js';
 	import { UNKNOWN_LABEL, whoToCall } from '#lib/build/who.js';
 	import { claimFor } from '#lib/provenance.js';
 	import type { Source } from '#lib/server/prisma.js';
@@ -111,6 +113,21 @@
 	);
 	const derivedClaim = $derived(mode === 'none' ? null : claimFor(defaultSource as Source, billsTransferring));
 	const registerFromQ6 = $derived(Q6.find((q) => q.test === q6)?.register ?? data.venue.provisionalRegister ?? '');
+
+	// Every call-owned field the register has no answer for, on the night being logged and the venue.
+	const gaps = $derived(
+		notAsked(
+			mode === 'standing' && residency
+				? { kind: 'standing', ...residency }
+				: mode === 'dated'
+					? { kind: 'dated', startTime: null, endTime: null, priceGate: null, priceAdvance: null, perks: [], lineup: [], ...occurrence }
+					: null,
+			data.venue
+		)
+	);
+	// Who picks up, by name, for the opening's second beat — only when we have one.
+	const contactName = $derived(dial === 'organiser' ? (organiser?.contactName ?? null) : dial === 'venue' ? data.venue.contactName : null);
+	const REGISTER_LABEL: Record<string, string> = { CHILL: 'CHILL', SOCIAL: 'SOCIAL', HIGH_ENERGY: 'HIGH-ENERGY' };
 
 	function onKey(e: KeyboardEvent) {
 		if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
@@ -234,14 +251,23 @@
 					{/each}
 				</section>
 			{/if}
-			<blockquote class="panel border-l-4 border-l-line">
-				“Hi, is this {dial === 'organiser' ? (organiser?.contactName ?? organiser?.name ?? '[name]') : dial === 'booking' ? '[name]' : (data.venue.contactName ?? '[name]')}? I’m {data.caller} from PartyWeya — we cover what’s happening
-				around Kampala nightlife, and <strong>listings are free</strong>. I’m putting this week together and I want to get
-				your details right. Two minutes?”
+			<!-- A teleprompter: each line is a breath, each gap a pause. -->
+			<blockquote class="panel space-y-3 border-l-4 border-l-line">
+				<p>
+					“Hello. My name is {data.caller} — I am calling from PartyWeya.<br />
+					Is this {dial === 'organiser' ? (organiser?.name ?? '[name]') : data.venue.name}?”
+				</p>
+				<p class="font-mono text-[10px] tracking-wider text-dim">— wait for the yes —</p>
+				{#if contactName}<p>“Could I speak to {contactName}?”</p>{/if}
+				<p>
+					“Great. So at PartyWeya, we post about events and nights happening around Kampala, <strong>free of charge</strong>.<br />
+					And I am calling because — I am putting together what’s happening this week, and I want to get your details right.<br />
+					You have 2 minutes?”
+				</p>
 			</blockquote>
 
 			<section class="panel space-y-4">
-				<h2 class="font-semibold"><span class="mr-2 font-mono text-xs text-dim">1–5</span>What’s on, when, what it costs, who’s playing</h2>
+				<h2 class="font-semibold"><span class="mr-2 font-mono text-xs text-dim">1–5</span>What’s on, when, the price and what comes with it, how long it’s run, what kind of night, who’s playing</h2>
 				<div class="flex flex-wrap gap-2 text-sm">
 					{#each [['none', 'Nothing to log'], ['standing', 'Fix a standing night'], ['dated', 'Log a dated night']] as [key, text] (key)}
 						<button
@@ -268,26 +294,39 @@
 							</select>
 						</label>
 						{#key residencyId}
-							<div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
-								<label class="field"><span>Starts</span><input name="s_start" class="input" placeholder="21:00" value={residency?.startTime ?? ''} /></label>
-								<label class="field"><span>Wraps</span><input name="s_end" class="input" placeholder="02:00" value={residency?.endTime ?? ''} /></label>
-								<label class="field"><span>At the gate</span><input name="s_gate" class="input" inputmode="numeric" placeholder="20000" value={residency?.priceGate ?? ''} /></label>
+							<!-- Nothing here is required; anything the register lacks says so (NOT ASKED YET). -->
+							<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+								<label class="field"><span>Starts<NotAsked when={gaps.has('startTime')} /></span><input name="s_start" class="input" placeholder="21:00" value={residency?.startTime ?? ''} /></label>
+								<label class="field"><span>Wraps<NotAsked when={gaps.has('endTime')} /></span><input name="s_end" class="input" placeholder="02:00" value={residency?.endTime ?? ''} /></label>
+								<label class="field"><span>At the gate<NotAsked when={gaps.has('priceGate')} /></span><input name="s_gate" class="input" inputmode="numeric" placeholder="20000" value={residency?.priceGate ?? ''} /></label>
+								<label class="field"><span>In advance<NotAsked when={gaps.has('priceAdvance')} /></span><input name="s_advance" class="input" inputmode="numeric" placeholder="—" value={residency?.priceAdvance ?? ''} /></label>
+							</div>
+							<div class="space-y-2">
+								<p class="text-sm">
+									<span class="mr-1 font-mono text-xs text-dim">3</span>“And is there anything that comes with it — drinks deals, food, free entry before a certain time?”
+									<NotAsked when={gaps.has('perks')} />
+								</p>
+								<p class="text-xs text-dim">Then: “Is that every week, or just this one?”</p>
+								<PerksEditor perks={residency?.perks ?? []} today={data.today} scope={{ start: 'weekly', once: 'just this week' }} confirm />
 							</div>
 							<!-- Question 4. Skippable — but an unanswered one stays visible, so the gap does too. -->
 							<label class="field">
-								<span>
-									<span class="mr-1 font-mono text-xs text-dim">4</span>“How long has it been running?”
-									{#if !residency?.runningSince}<span class="ml-1 font-mono text-[10px] tracking-wider text-social">NOT ASKED YET</span>{/if}
-								</span>
+								<span><span class="mr-1 font-mono text-xs text-dim">4</span>“How long has it been running?”<NotAsked when={gaps.has('runningSince')} /></span>
 								<input name="s_since" type="month" class="input w-48" max={data.today.slice(0, 7)} value={residency?.runningSince?.slice(0, 7) ?? ''} />
 							</label>
-							<div class="field"><span>The resident act — leave it as it is if it hasn’t changed</span>
+							<!-- Question 5 — only while the category is an inference; once said, it's a standing fact. -->
+							{#if gaps.has('category')}
+								<label class="field">
+									<span><span class="mr-1 font-mono text-xs text-dim">5</span>“What kind of night is it — live band, DJ, karaoke, quiz, something else?”<NotAsked when /></span>
+									<select name="s_category" class="input w-60" value="">
+										<option value="">not asked — guessed {label(residency?.category ?? '').toLowerCase()}</option>
+										{#each CATEGORIES as c (c)}<option value={c}>{label(c)}</option>{/each}
+									</select>
+								</label>
+							{/if}
+							<div class="field"><span>The resident act — leave it as it is if it hasn’t changed<NotAsked when={gaps.has('lineup')} /></span>
 								<LineupInput bind:this={lineupEl} name="s_lineup" value={residency?.lineup ?? []} bind:names={lineup} suggestions={data.suggestions} placeholder="The Clan Band" onresolved={() => formEl.requestSubmit()} />
 							</div>
-						<div class="space-y-2 border-t border-line pt-3">
-							<p class="text-sm">“Anything on for drinks or food that night?”</p>
-							<PerksEditor perks={residency?.perks ?? []} today={data.today} />
-						</div>
 						{/key}
 					{/if}
 				{:else if mode === 'dated'}
@@ -315,12 +354,12 @@
 						<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
 							<label class="field"><span>Date</span><input name="d_date" type="date" class="input" value={occurrence?.date ?? ''} min={data.today} /></label>
 							<label class="field col-span-2 sm:col-span-3"><span>Name</span><input name="d_name" class="input" value={occurrence?.eventName ?? ''} /></label>
-							<label class="field"><span>Starts</span><input name="d_start" class="input" placeholder="21:00" value={occurrence?.startTime ?? ''} /></label>
-							<label class="field"><span>Wraps</span><input name="d_end" class="input" placeholder="02:00" value={occurrence?.endTime ?? ''} /></label>
-							<label class="field"><span>At the gate</span><input name="d_gate" class="input" inputmode="numeric" value={occurrence?.priceGate ?? ''} /></label>
-							<label class="field"><span>In advance</span><input name="d_advance" class="input" inputmode="numeric" placeholder="—" value={occurrence?.priceAdvance ?? ''} /></label>
+							<label class="field"><span>Starts<NotAsked when={gaps.has('startTime')} /></span><input name="d_start" class="input" placeholder="21:00" value={occurrence?.startTime ?? ''} /></label>
+							<label class="field"><span>Wraps<NotAsked when={gaps.has('endTime')} /></span><input name="d_end" class="input" placeholder="02:00" value={occurrence?.endTime ?? ''} /></label>
+							<label class="field"><span>At the gate<NotAsked when={gaps.has('priceGate')} /></span><input name="d_gate" class="input" inputmode="numeric" value={occurrence?.priceGate ?? ''} /></label>
+							<label class="field"><span>In advance<NotAsked when={gaps.has('priceAdvance')} /></span><input name="d_advance" class="input" inputmode="numeric" placeholder="—" value={occurrence?.priceAdvance ?? ''} /></label>
 							<label class="field col-span-2"><span>Price tiers as advertised</span><input name="d_note" class="input" placeholder="165K PRE | 190K AT THE GATE" value={occurrence?.priceNote ?? ''} /></label>
-							<label class="field"><span>Category</span>
+							<label class="field"><span><span class="mr-1 font-mono text-xs text-dim">5</span>Category</span>
 								<select name="d_category" class="input" value={occurrence?.category ?? 'OTHER'}>
 									{#each CATEGORIES as c (c)}<option value={c}>{label(c)}</option>{/each}
 								</select>
@@ -333,13 +372,23 @@
 									<option value="HIGH_ENERGY">High-Energy</option>
 								</select>
 							</label>
-							<div class="field col-span-2 sm:col-span-4"><span>Who’s playing — headliner first</span>
+							<div class="field col-span-2 sm:col-span-4"><span>Who’s playing — headliner first<NotAsked when={gaps.has('lineup')} /></span>
 								<LineupInput bind:this={lineupEl} name="d_lineup" value={occurrence?.lineup ?? []} bind:names={lineup} suggestions={data.suggestions} placeholder="Named acts — the basis of a TRANSFERRED claim" onresolved={() => formEl.requestSubmit()} />
 							</div>
 						</div>
 						<div class="space-y-2 border-t border-line pt-3">
-							<p class="text-sm">“Anything on for drinks or food that night?”</p>
-							<PerksEditor perks={occurrence?.perks ?? []} today={data.today} />
+							<p class="text-sm">
+								<span class="mr-1 font-mono text-xs text-dim">3</span>“And is there anything that comes with it — drinks deals, food, free entry before a certain time?”
+								<NotAsked when={gaps.has('perks')} />
+							</p>
+							<!-- Only a standing night's date can have an every-week offer; a one-off's are its own. -->
+							{#if occurrence?.residencyId}<p class="text-xs text-dim">Then: “Is that every week, or just this one?”</p>{/if}
+							<PerksEditor
+								perks={occurrence?.perks ?? []}
+								today={data.today}
+								scope={occurrence?.residencyId ? { start: 'once', once: `just ${shortDate(occurrence.date)}` } : null}
+								confirm
+							/>
 						</div>
 					{/key}
 				{/if}
@@ -353,7 +402,7 @@
 				</p>
 			{:else}
 			<section class="panel space-y-3 border-chill/40 bg-chill/5">
-				<h2 class="font-semibold"><span class="mr-2 font-mono text-xs text-dim">6</span>The one that earns its place</h2>
+				<h2 class="font-semibold"><span class="mr-2 font-mono text-xs text-dim">6</span>The one that earns its place<NotAsked when={gaps.has('conversationTest')} /></h2>
 				<p>“If I came through with friends and we wanted to actually talk — could we? Or is it full-volume?”</p>
 				<div class="grid gap-2 sm:grid-cols-3">
 					{#each Q6 as q (q.test)}
@@ -371,14 +420,14 @@
 				{/if}
 				{#if !data.venue.conversationTest}
 					<p class="text-xs text-chill">
-						Never asked at this venue. Its register is currently guessed from the category — which is how the book reached
-						zero Chill.
+						Never asked at this venue. Its nights’ registers are guessed from the category — which is how the book drifted
+						toward High-Energy.
 					</p>
 				{/if}
 				{#if q6 && data.residencies.length}
 					<p class="text-xs text-dim">
 						Saving reclasses {data.residencies.length === 1 ? 'its standing night' : `all ${data.residencies.length} standing nights here`}
-						as {label(Q6.find((q) => q.test === q6)!.register)}.
+						as {label(Q6.find((q) => q.test === q6)!.register)}{#if data.residencies.some((r) => r.attendedAt)} — except any judged in the room, which keep the room’s{/if}.
 					</p>
 				{/if}
 			</section>
@@ -400,8 +449,8 @@
 				{/if}
 				{#if dial === 'venue'}
 				<div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_160px_180px]">
-					<label class="field"><span>Best person to call</span><input name="contactName" class="input" value={data.venue.contactName ?? ''} placeholder="—" /></label>
-					<label class="field"><span>Their role</span>
+					<label class="field"><span>Best person to call<NotAsked when={gaps.has('contactName')} /></span><input name="contactName" class="input" value={data.venue.contactName ?? ''} placeholder="—" /></label>
+					<label class="field"><span>Their role<NotAsked when={gaps.has('contactRole')} /></span>
 						<select name="contactRole" class="input" value={data.venue.contactRole ?? ''}>
 							<option value="">—</option>
 							{#each ROLES as r (r)}<option value={r}>{r}</option>{/each}
@@ -443,10 +492,15 @@
 					<div class="flex justify-between"><dt>Last called</dt><dd class={data.venue.lastContacted ? '' : 'text-social'}>{data.venue.lastContacted ? shortDate(data.venue.lastContacted) : 'never'}</dd></div>
 					<div class="flex justify-between"><dt>Last attended</dt><dd class={data.venue.lastAttended ? '' : 'text-social'}>{data.venue.lastAttended ? shortDate(data.venue.lastAttended) : 'never'}</dd></div>
 					<div class="flex justify-between"><dt>A night that clears F2</dt><dd class="text-dim">{data.venue.clearsF2 == null ? 'not judged' : data.venue.clearsF2 ? 'yes' : 'none'}</dd></div>
-					<div class="flex justify-between"><dt>Register</dt>
-						<dd class={data.venue.conversationTest ? REGISTER_TONE[data.venue.provisionalRegister ?? ''] : 'text-chill'}>
-							{data.venue.conversationTest ? label(data.venue.provisionalRegister ?? '') : 'unclassed'}
-						</dd>
+					<!-- The judged register, else question 6's guess, else nothing — never a category's. -->
+					<div class="flex justify-between gap-2"><dt>Register</dt>
+						{#if data.venue.register}
+							<dd class="text-right {REGISTER_TONE[data.venue.register]}">{REGISTER_LABEL[data.venue.register]} <span class="text-dim">(judged in the room{data.venue.registerJudgedAt ? `, ${shortDate(data.venue.registerJudgedAt)}` : ''})</span></dd>
+						{:else if data.venue.conversationTest}
+							<dd class="text-right {REGISTER_TONE[data.venue.provisionalRegister ?? '']}">{REGISTER_LABEL[data.venue.provisionalRegister ?? '']} <span class="text-dim">(from question 6)</span></dd>
+						{:else}
+							<dd class="text-social">NOT ASKED YET</dd>
+						{/if}
 					</div>
 					<div class="flex justify-between"><dt>Paid client</dt><dd>{data.venue.paidClient ? 'yes' : 'no'}</dd></div>
 				</dl>
@@ -457,10 +511,21 @@
 					<h3 class="panel-title mb-3">Standing nights</h3>
 					<ul class="space-y-2">
 						{#each data.residencies as r (r.id)}
+							{@const origin = registerOrigin(r, data.venue)}
 							<li class="border-b border-line pb-2 last:border-0">
 								<p class="text-sm">{r.eventName}</p>
 								<p class="font-mono text-[11px] {r.startTime ? 'text-dim' : 'text-social'}">
-									{DOW[r.dayOfWeek]} · {r.startTime ?? 'no time'} · {r.register}
+									{DOW[r.dayOfWeek]} · {r.startTime ?? 'no time'}
+								</p>
+								<!-- Three provenances, three looks: a guess must not wear a judgement's typeface. -->
+								<p class="font-mono text-[11px]">
+									{#if origin.kind === 'room'}
+										<span class="font-semibold {REGISTER_TONE[r.register]}">{REGISTER_LABEL[r.register]}</span> <span class="text-vetted">({originLabel(origin)})</span>
+									{:else if origin.kind === 'q6'}
+										<span class={REGISTER_TONE[r.register]}>{REGISTER_LABEL[r.register]}</span> <span class="text-dim">({originLabel(origin)})</span>
+									{:else}
+										<span class="text-dim italic">{REGISTER_LABEL[r.register]}?</span> <span class="text-dim italic">({originLabel(origin)})</span>
+									{/if}
 								</p>
 							</li>
 						{/each}
