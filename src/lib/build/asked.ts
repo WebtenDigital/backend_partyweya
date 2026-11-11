@@ -66,6 +66,11 @@ export type RegisterOrigin = { kind: 'room'; on: string } | { kind: 'q6' } | { k
  * write-up set it (the write-up sets attendance, ATTENDED and the register
  * together); from question 6 when it is the venue's answer; otherwise a
  * guess — the import copied it from the category, and nothing has judged it.
+ *
+ * Known false positive, in the flattering direction: a category guess that
+ * happens to agree with question 6 reads as "from question 6". The fix is a
+ * Residency.registerAskedAt column (backfill: every unattended night a guess),
+ * due with the contract pass that drops Venue.tier / nextContactDue / clearsF2.
  */
 export function registerOrigin(
 	night: { register: string | null; attendedAt: string | null; source: string | null },

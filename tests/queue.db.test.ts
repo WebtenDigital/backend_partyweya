@@ -5,7 +5,7 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createPrisma, type Tx } from '../src/lib/server/db.ts';
 import { loadDiscovery, loadOwed } from '../src/lib/server/queue.ts';
-import { kampalaToday, nextMonday } from '../src/lib/build/week.ts';
+import { addDays, kampalaToday, nextMonday } from '../src/lib/build/week.ts';
 
 const db = createPrisma(process.env.DIRECT_URL ?? process.env.DATABASE_URL!);
 after(() => db.$disconnect());
@@ -34,8 +34,8 @@ const night = (tx: Tx, venueId: string, data: Record<string, unknown> = {}) =>
 	});
 
 /** Where one venue lands: the call round's groups, discovery (past the cap too), unreachable. */
-const groupsOf = async (tx: Tx, id: string) => {
-	const [{ queue }, discovery] = await Promise.all([loadOwed(week, today, tx), loadDiscovery(today, tx)]);
+const groupsOf = async (tx: Tx, id: string, on = { today, week }) => {
+	const [{ queue }, discovery] = await Promise.all([loadOwed(on.week, on.today, tx), loadDiscovery(on.today, tx)]);
 	return {
 		queue: queue.filter((r) => r.venue.id === id).map((r) => r.group),
 		discovery: discovery.ready.has(id),
@@ -69,11 +69,19 @@ test('group 1: a tier B venue a week past its last confirmation is cadence — w
 		assert.deepEqual((await groupsOf(tx, v.id)).queue, ['due']);
 	}));
 
+// A frozen calendar, not today's: whether 31 days old is still inside the
+// 35-day window by the night being published depends on the weekday this runs
+// (Mon–Wed it isn't, and the night is "before publishing" instead). Thursday,
+// the day the call round runs, is the case this test is about.
+const thursday = '2026-11-05';
+const frozen = { today: thursday, week: nextMonday(thursday) };
+const before = (n: number) => new Date(`${addDays(thursday, -n)}T12:00:00+03:00`);
+
 test('group 1: tier A — confirmed and held 3+ months — a month past its last confirmation is cadence', () =>
 	rolledBack(async (tx) => {
 		const v = await venue(tx, 'tier-a', { conversationTest: 'CAN_TALK' });
-		await night(tx, v.id, { lastConfirmed: daysAgo(31), runningSince: daysAgo(400) });
-		assert.deepEqual((await groupsOf(tx, v.id)).queue, ['due']);
+		await night(tx, v.id, { lastConfirmed: before(31), runningSince: before(400) });
+		assert.deepEqual((await groupsOf(tx, v.id, frozen)).queue, ['due']);
 	}));
 
 test('group 2: any standing night never confirmed is before publishing — weekly or monthly, never cadence', () =>
