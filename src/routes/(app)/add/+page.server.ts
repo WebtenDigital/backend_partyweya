@@ -2,11 +2,12 @@ import { fail, redirect } from '@sveltejs/kit';
 import { CALLER_NAME } from '$app/env/private';
 import { prisma, Category, Register } from '#lib/server/prisma.js';
 import { addPerks } from '#lib/server/perks.js';
+import { parsePrices, savePrices } from '#lib/server/price.js';
 import { lineupFrom, lineupSuggestions, newActsParam, unclassified } from '#lib/server/acts.js';
-import { Invalid, failureMessage, money, oneOf, phone, slug, text, time } from '#lib/server/forms.js';
+import { Invalid, failureMessage, oneOf, phone, slug, text, time } from '#lib/server/forms.js';
 import { organiserFrom, organiserOptions } from '#lib/server/organisers.js';
 import { claimFor, sourceAfter } from '#lib/provenance.js';
-import { lineupTransfers } from '#lib/server/provenance.js';
+import { billedLineup, lineupTransfers, ruleBills } from '#lib/server/provenance.js';
 import { createVenue } from '#lib/server/venues.js';
 import type { Source } from '#lib/server/prisma.js';
 import { asDate, kampalaDate } from '#lib/server/register.js';
@@ -37,7 +38,6 @@ export const load: PageServerLoad = async ({ url }) => {
 				dayOfWeek: true,
 				startTime: true,
 				endTime: true,
-				priceGate: true,
 				register: true,
 				lineup: true,
 				runningSince: true
@@ -109,7 +109,9 @@ export const actions: Actions = {
 				};
 				const startTime = time(f, 'start', 'Start');
 				const endTime = time(f, 'end', 'Wrap');
-				const priceGate = money(f, 'gate', 'Gate price');
+				// Prices from the flyer replace the night's when any are given; none given keeps them.
+				const prices = parsePrices(f);
+				const putPrices = (parent: { residencyId: string } | { occurrenceId: string }) => (prices?.length ? savePrices(tx, parent, prices) : null);
 				const register = oneOf(Register, text(f, 'register'), 'register');
 				// The act: overwritten on a merge only when one is given.
 				const lineup = lineupFrom(f) ?? [];
@@ -141,7 +143,6 @@ export const actions: Actions = {
 						dayOfWeek: day,
 						startTime,
 						endTime,
-						priceGate,
 						register,
 						active: true,
 						...(lineup.length && { lineup }),
@@ -156,7 +157,9 @@ export const actions: Actions = {
 								})
 							: null;
 					// A merge with no act given keeps the night's existing one — and is judged on it.
-					Object.assign(data, await provenance(lineup.length ? lineup : (existing?.lineup ?? []), existing?.source));
+					// "Different act every week" is recorded when said; a merge that doesn't say leaves it as it was.
+					const rotatingAct = f.get('rotating') === '1' || (existing?.rotatingAct ?? false);
+					Object.assign(data, { rotatingAct }, await provenance(ruleBills({ lineup: lineup.length ? lineup : (existing?.lineup ?? []), rotatingAct }), existing?.source));
 					let id: string;
 					if (existing) {
 						id = existing.id;
@@ -166,6 +169,7 @@ export const actions: Actions = {
 						if (await tx.residency.findUnique({ where: { id } })) id = `${id}-${day}`;
 						await tx.residency.create({ data: { id, venueId, ...data } });
 					}
+					await putPrices({ residencyId: id });
 					// Offers are added, never replaced — in the same transaction as the night.
 					await addPerks(tx, { residencyId: id }, f);
 					const date = nextOn(today, day);
@@ -196,8 +200,6 @@ export const actions: Actions = {
 								category,
 								startTime,
 								endTime,
-								priceGate,
-								priceAdvance: money(f, 'advance', 'Advance price'),
 								register,
 								...(lineup.length && { lineup }),
 								...routing,
@@ -208,7 +210,7 @@ export const actions: Actions = {
 				});
 				// An empty lineup shows the standing night's, so that's what the claim is judged on —
 				// as the database's TRANSFERRED check judges it.
-				const billed = lineup.length ? lineup : existing?.lineup.length ? existing.lineup : (residency?.lineup ?? []);
+				const billed = lineup.length ? lineup : existing?.lineup.length ? existing.lineup : billedLineup([], residency);
 				const fields = {
 					...data,
 					...(await provenance(billed, existing?.source)),
@@ -228,7 +230,10 @@ export const actions: Actions = {
 					});
 				}
 				// A cancellation publishes nothing, so it carries no act or offers.
-				if (repeat !== 'cancelled') await addPerks(tx, { occurrenceId: id }, f);
+				if (repeat !== 'cancelled') {
+					await putPrices({ occurrenceId: id });
+					await addPerks(tx, { occurrenceId: id }, f);
+				}
 				return { week: mondayOf(date), highlight: repeat === 'cancelled' ? null : id };
 			});
 		} catch (e) {

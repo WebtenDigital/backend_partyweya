@@ -8,6 +8,7 @@
 	import OrganiserPicker from '#lib/components/OrganiserPicker.svelte';
 	import PerksEditor from '#lib/components/PerksEditor.svelte';
 	import LineupInput from '#lib/components/LineupInput.svelte';
+	import PricesEditor from '#lib/components/PricesEditor.svelte';
 	import NewActsPrompt from '#lib/components/NewActsPrompt.svelte';
 	import { mondayOf } from '#lib/build/add.js';
 	import { addDays, dayHeading, shortDate } from '#lib/build/week.js';
@@ -70,11 +71,12 @@
 				<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
 					<label class="field"><span>Starts</span><input name="startTime" class="input h-11" placeholder="21:00" value={o.startTime ?? ''} /></label>
 					<label class="field"><span>Wraps</span><input name="endTime" class="input h-11" placeholder="02:00" value={o.endTime ?? ''} /></label>
-					<label class="field"><span>At the gate</span><input name="priceGate" class="input h-11" inputmode="numeric" value={o.priceGate ?? ''} /></label>
-					<label class="field"><span>In advance</span><input name="priceAdvance" class="input h-11" inputmode="numeric" placeholder="—" value={o.priceAdvance ?? ''} /></label>
+				</div>
+				<div class="field"><span>Prices — the venue’s own words{o.residency ? '; blank keeps the standing night’s' : ''}</span>
+					<PricesEditor prices={o.prices} today={data.today} timing />
+					{#if o.priceNote}<p class="text-xs text-dim">As advertised, before price rows: <span class="font-mono">{o.priceNote}</span></p>{/if}
 				</div>
 				<div class="grid gap-3 sm:grid-cols-2">
-					<label class="field"><span>Price tiers as advertised</span><input name="priceNote" class="input h-11" placeholder="165K PRE | 190K AT THE GATE" value={o.priceNote ?? ''} /></label>
 					<label class="field"><span>Register</span>
 						<select name="register" class="input h-11" value={o.register ?? ''}>
 							<option value="">not known</option><option value="CHILL">CHILL</option><option value="SOCIAL">SOCIAL</option><option value="HIGH_ENERGY">HIGH-ENERGY</option>

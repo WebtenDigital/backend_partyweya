@@ -48,7 +48,7 @@ const venue = (tx: Tx, id: string, data: Record<string, unknown> = {}) =>
 	});
 const standing = (tx: Tx, venueId: string, name: string, dayOfWeek: number, data: Record<string, unknown> = {}) =>
 	tx.residency.create({
-		data: { id: `${venueId}-${name}`, venueId, eventName: `ZZ ${name}`, category: 'LIVE_BAND', dayOfWeek, startTime: '21:30', priceGate: 20000, lineup: ['Band'], register: 'SOCIAL', lastConfirmed: new Date(), ...data }
+		data: { id: `${venueId}-${name}`, venueId, eventName: `ZZ ${name}`, category: 'LIVE_BAND', dayOfWeek, startTime: '21:30', prices: { create: { label: 'Entry', amount: 20000, timing: 'GATE' } }, lineup: ['Band'], register: 'SOCIAL', lastConfirmed: new Date(), ...data }
 	});
 
 const visit = (ref: string, date: string, o: Partial<VisitInput> = {}): VisitInput => ({

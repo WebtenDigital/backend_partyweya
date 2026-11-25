@@ -10,6 +10,10 @@
 // months back — the second needs nobody to remember to ask, so tier A fills
 // by itself as our confirmations age.
 //
+// A night whose act changes every week (Residency.rotatingAct) is never A:
+// the protocol puts "venues that rotate line-ups" in tier B. The schedule is
+// stable; the lineup is not, and it's the lineup that changes weekly.
+//
 // Pure functions, no database: dates are YYYY-MM-DD in Kampala's calendar.
 
 import { addDays } from '../build/week.js';
@@ -23,6 +27,7 @@ export type Night =
 			lastConfirmed: string | null; //    our last confirmation of the rule
 			runningSince: string | null; //     the venue's claim; null = not asked
 			firstConfirmedAt?: string | null; // our first confirmation; set once
+			rotating?: boolean; //             a different act every week: B at best
 	  }
 	| {
 			kind: 'one-off';
@@ -47,6 +52,7 @@ export function monthsBefore(date: string, n: number) {
  *   one-off, confirmed or already past               → DONE
  *   recurring, confirmed, held < 3 months or unknown → B
  *   recurring, confirmed, held 3+ months             → A
+ *   …unless its act rotates                          → B, however long held
  *     held = running since 3+ months ago (their word)
  *         OR first confirmed by us 3+ months ago (our record)
  */
@@ -55,7 +61,7 @@ export function tierForNight(night: Night, today: string): NightTier {
 	if (!night.lastConfirmed) return 'C';
 	const since = monthsBefore(today, HELD_MONTHS);
 	const held = (night.runningSince != null && night.runningSince <= since) || (night.firstConfirmedAt != null && night.firstConfirmedAt <= since);
-	return held ? 'A' : 'B';
+	return held && !night.rotating ? 'A' : 'B';
 }
 
 /**
@@ -111,7 +117,7 @@ export function describeVenueTier(nights: Night[], today: string): { tier: Venue
 	if (tier === 'C') return { tier, text: 'Tier C · this week — a night here has never been confirmed' };
 	const due = dueDateForVenue(nights, today);
 	const n = nights.find((x) => x.kind === 'standing' && tierForNight(x, today) === tier && dueDateForNight(x, today) === due) as Extract<Night, { kind: 'standing' }>;
-	const held = n.runningSince ? `running since ${monthYear(n.runningSince)}` : 'running since not known';
+	const held = n.rotating ? 'a different act every week' : n.runningSince ? `running since ${monthYear(n.runningSince)}` : 'running since not known';
 	const ours = tier === 'A' && !(n.runningSince && n.runningSince <= monthsBefore(today, HELD_MONTHS)) && n.firstConfirmedAt ? ` · first confirmed ${dayMonth(n.firstConfirmedAt)} ${n.firstConfirmedAt.slice(0, 4)}` : '';
 	return { tier, text: `Tier ${tier} · ${tier === 'A' ? 'monthly' : 'weekly'} — confirmed ${dayMonth(n.lastConfirmed!)}, ${held}${ours}` };
 }

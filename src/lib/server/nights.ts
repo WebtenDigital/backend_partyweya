@@ -9,9 +9,10 @@
 import type { Category as CategoryT, Register as RegisterT, Source } from '../../generated/prisma/enums';
 import { Category, Register } from '../../generated/prisma/enums';
 import type { Tx } from './db.js';
-import { Invalid, money, oneOf, slug, text, time } from './forms.js';
+import { Invalid, oneOf, slug, text, time } from './forms.js';
 import { asDate } from './register.js';
 import { addPerks, offersAnswered, parsePerks, type ParsedPerk } from './perks.js';
+import { parsePrices, savePrices, type ParsedPrice } from './price.js';
 import { addDays } from '../build/week.js';
 import { isoDay } from '../build/add.js';
 
@@ -30,8 +31,7 @@ export type Night = {
 	date: string | null;
 	startTime: string;
 	endTime: string | null;
-	priceGate: number | null;
-	priceAdvance: number | null;
+	prices: ParsedPrice[];
 	runningSince: string | null;
 	lineup: string[];
 	register: RegisterT;
@@ -39,7 +39,7 @@ export type Night = {
 	offersAnswered: boolean; // an offer, or "they have none"
 };
 
-const FIELDS = ['name', 'category', 'recurrence', 'day', 'date', 'start', 'end', 'gate', 'advance', 'since', 'lineup', 'register'];
+const FIELDS = ['name', 'category', 'recurrence', 'day', 'date', 'start', 'end', 'since', 'lineup', 'register'];
 
 /**
  * The night blocks on a form, in order. `dates` says which one-off dates make
@@ -51,15 +51,21 @@ const FIELDS = ['name', 'category', 'recurrence', 'day', 'date', 'start', 'end',
 export function nightsFrom(f: FormData, today: string, opts: { register: RegisterT | null; dates: 'ahead' | 'fortnight' }): Night[] {
 	// Each block's offers are its run of n_perk_* rows; n_perk_count says how many.
 	const counts = f.getAll('n_perk_count').map(Number);
+	const priceCounts = f.getAll('n_price_count').map(Number);
+	const before = (c: number[], i: number) => c.slice(0, i).reduce((a, n) => a + n, 0);
 	const blocks = f.getAll('n_name').map((_, i) => {
 		const night = new FormData();
 		for (const k of FIELDS) night.set(k, String(f.getAll(`n_${k}`)[i] ?? ''));
-		const from = counts.slice(0, i).reduce((a, c) => a + c, 0);
-		return { b: night, perks: parsePerks(f, 'n_perk', { from, count: counts[i] ?? 0 }) ?? [], none: f.getAll('n_perk_none')[i] };
+		return {
+			b: night,
+			perks: parsePerks(f, 'n_perk', { from: before(counts, i), count: counts[i] ?? 0 }) ?? [],
+			none: f.getAll('n_perk_none')[i],
+			prices: parsePrices(f, 'n_price', { from: before(priceCounts, i), count: priceCounts[i] ?? 0 }) ?? []
+		};
 	});
 	// A block left completely empty is just an unused "add another night".
-	const filled = blocks.filter(({ b, perks }) => perks.length || FIELDS.some((k) => k !== 'recurrence' && k !== 'category' && k !== 'register' && text(b, k)));
-	return filled.map(({ b, perks, none }, n) => {
+	const filled = blocks.filter(({ b, perks, prices }) => perks.length || prices.length || FIELDS.some((k) => k !== 'recurrence' && k !== 'category' && k !== 'register' && text(b, k)));
+	return filled.map(({ b, perks, none, prices }, n) => {
 		const at = filled.length > 1 ? ` (night ${n + 1})` : '';
 		const eventName = text(b, 'name');
 		if (!eventName) throw new Invalid(`What’s the night called${at}?`);
@@ -80,10 +86,6 @@ export function nightsFrom(f: FormData, today: string, opts: { register: Registe
 		const register = oneOf(Register, text(b, 'register'), 'register') ?? opts.register;
 		if (!register) throw new Invalid(`Which register was it${at}?`);
 		const since = text(b, 'since') ?? '';
-		const priceGate = money(b, 'gate', `Gate price${at}`);
-		const priceAdvance = money(b, 'advance', `Advance price${at}`);
-		if (priceGate != null && priceAdvance != null && priceAdvance >= priceGate)
-			throw new Invalid(`The advance price${at} has to be cheaper than the gate — or it isn’t an advance price.`);
 		return {
 			eventName,
 			category,
@@ -92,8 +94,7 @@ export function nightsFrom(f: FormData, today: string, opts: { register: Registe
 			date: standing ? null : date,
 			startTime,
 			endTime: time(b, 'end', `Wrap${at}`),
-			priceGate,
-			priceAdvance,
+			prices,
 			runningSince: standing && /^\d{4}-\d{2}$/.test(since) ? `${since}-01` : null,
 			lineup: (text(b, 'lineup') ?? '')
 				.split(/[,;]/)
@@ -130,8 +131,6 @@ export async function createNights(
 			category: n.category,
 			startTime: n.startTime,
 			endTime: n.endTime,
-			priceGate: n.priceGate,
-			priceAdvance: n.priceAdvance,
 			register: n.register,
 			lineup: n.lineup,
 			source: how.source,
@@ -149,6 +148,7 @@ export async function createNights(
 					...(how.confirmed ? { status: 'CONFIRMED', confirmedOn: how.confirmed.at, confirmedBy: how.confirmed.by } : { status: 'LEAD' })
 				}
 			});
+			await savePrices(db, { occurrenceId: id }, n.prices);
 			await addPerks(db, { occurrenceId: id }, n.perks, how.confirmed);
 			made.push({ kind: 'occurrence', ref: id, night: n });
 		} else {
@@ -166,6 +166,7 @@ export async function createNights(
 					lastConfirmed: how.confirmed?.at ?? null
 				}
 			});
+			await savePrices(db, { residencyId: id }, n.prices);
 			await addPerks(db, { residencyId: id }, n.perks, how.confirmed);
 			made.push({ kind: 'residency', ref: id, night: n });
 		}

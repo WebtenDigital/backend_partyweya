@@ -59,7 +59,7 @@ export interface QueueOccurrence {
 	date: string;
 	eventName: string;
 	startTime: string | null;
-	priceGate: number | null;
+	priced: boolean; // any price row, its own or its standing night's — none reads "no price", never free
 	register: string | null;
 	status: string;
 }
@@ -111,7 +111,7 @@ function blockers(o: QueueOccurrence) {
 		o.status === 'LEAD' && 'unconfirmed',
 		o.status === 'CHANGED' && 'changed — re-verify',
 		!o.startTime && 'no time',
-		o.priceGate == null && 'no price',
+		!o.priced && 'no price',
 		!o.register && 'no register'
 	].filter(Boolean);
 	return parts.length ? parts.join(', ') : null;

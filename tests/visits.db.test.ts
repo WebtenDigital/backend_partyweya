@@ -45,7 +45,7 @@ async function venueWithNight(tx: Tx, id: string, dayOfWeek = 6) {
 		data: { id: `zz-plan-${id}`, name: `ZZ Plan ${id}`, phones: ['0772 000003'], conversationTest: 'ONLY_AT_THE_EDGES', provisionalRegister: 'SOCIAL', conversationTestAt: new Date() }
 	});
 	const r = await tx.residency.create({
-		data: { id: `${v.id}-night`, venueId: v.id, eventName: `ZZ ${id}`, category: 'LIVE_BAND', dayOfWeek, startTime: '21:30', priceGate: 0, register: 'CHILL', lastConfirmed: new Date() }
+		data: { id: `${v.id}-night`, venueId: v.id, eventName: `ZZ ${id}`, category: 'LIVE_BAND', dayOfWeek, startTime: '21:30', prices: { create: { label: 'Entry', amount: 0, timing: 'GATE' } }, register: 'CHILL', lastConfirmed: new Date() }
 	});
 	return { v, r };
 }

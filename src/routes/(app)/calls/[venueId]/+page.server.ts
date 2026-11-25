@@ -13,15 +13,16 @@ import type { Tx } from '#lib/server/db.js';
 import { asDate, isWeek, isoDate, kampalaDate } from '#lib/server/register.js';
 import { Q6 } from '#lib/build/calls.js';
 import { addPerks, offersAnswered, parsePerks, savePerks } from '#lib/server/perks.js';
+import { PRICE_ORDER, parsePrices, priceRow, savePrices } from '#lib/server/price.js';
 import { lineupFrom, lineupSuggestions, newActsParam, unclassified } from '#lib/server/acts.js';
-import { Invalid, failureMessage, money, oneOf, phoneList, slug, text, time } from '#lib/server/forms.js';
+import { Invalid, failureMessage, oneOf, phoneList, slug, text, time } from '#lib/server/forms.js';
 import { answeredOn, dialNumber, samePhone, withPhones } from '#lib/phones.js';
 import { addDays, kampalaToday, nextMonday } from '#lib/build/week.js';
 import { reminders } from '#lib/server/reminders.js';
 import { describeVenueTier, type Night } from '#lib/server/tier.js';
 import { organiserFrom, organiserOptions } from '#lib/server/organisers.js';
 import { claimFor, sourceAfter } from '#lib/provenance.js';
-import { lineupTransfers } from '#lib/server/provenance.js';
+import { billedLineup, lineupTransfers, ruleBills } from '#lib/server/provenance.js';
 import { whoToCall, type NightContact, type Who } from '#lib/build/who.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -43,12 +44,20 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			residencies: {
 				where: { active: true },
 				orderBy: { dayOfWeek: 'asc' },
-				include: { organiser: { select: { id: true, name: true, contactName: true, role: true, phone: true, whatsapp: true } }, perks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] } }
+				include: {
+					organiser: { select: { id: true, name: true, contactName: true, role: true, phone: true, whatsapp: true } },
+					perks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
+					prices: { orderBy: PRICE_ORDER }
+				}
 			},
 			occurrences: {
 				where: { date: { gte: asDate(today) }, status: { not: 'CANCELLED' } },
 				orderBy: { date: 'asc' },
-				include: { organiser: { select: { id: true, name: true, contactName: true, role: true, phone: true, whatsapp: true } }, perks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] } }
+				include: {
+					organiser: { select: { id: true, name: true, contactName: true, role: true, phone: true, whatsapp: true } },
+					perks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
+					prices: { orderBy: PRICE_ORDER }
+				}
 			}
 		}
 	});
@@ -111,8 +120,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			dayOfWeek: r.dayOfWeek,
 			startTime: r.startTime,
 			endTime: r.endTime,
-			priceGate: r.priceGate,
-			priceAdvance: r.priceAdvance,
+			prices: r.prices.map(priceRow),
 			offersAskedAt: kampalaDate(r.offersAskedAt),
 			register: r.register,
 			attendedAt: r.attendedAt ? isoDate(r.attendedAt) : null,
@@ -120,6 +128,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			lastConfirmed: kampalaDate(r.lastConfirmed),
 			runningSince: kampalaDate(r.runningSince),
 			lineup: r.lineup,
+			rotatingAct: r.rotatingAct,
 			organiser: r.organiser,
 			organiserId: r.organiserId,
 			bookingPhone: r.bookingPhone,
@@ -133,10 +142,8 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			category: o.category,
 			startTime: o.startTime,
 			endTime: o.endTime,
-			priceGate: o.priceGate,
-			priceAdvance: o.priceAdvance,
+			prices: o.prices.map(priceRow),
 			offersAskedAt: kampalaDate(o.offersAskedAt),
-			priceNote: o.priceNote,
 			lineup: o.lineup,
 			register: o.register,
 			status: o.status,
@@ -155,7 +162,13 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		tier: describeVenueTier(
 			[
 				...venue.residencies.map(
-					(r): Night => ({ kind: 'standing', lastConfirmed: kampalaDate(r.lastConfirmed), runningSince: kampalaDate(r.runningSince), firstConfirmedAt: kampalaDate(r.firstConfirmedAt) })
+					(r): Night => ({
+						kind: 'standing',
+						lastConfirmed: kampalaDate(r.lastConfirmed),
+						runningSince: kampalaDate(r.runningSince),
+						firstConfirmedAt: kampalaDate(r.firstConfirmedAt),
+						rotating: r.rotatingAct
+					})
 				),
 				...venue.occurrences.filter((o) => !o.residencyId).map((o): Night => ({ kind: 'one-off', date: isoDate(o.date), confirmed: o.status === 'CONFIRMED' }))
 			],
@@ -318,13 +331,16 @@ export const actions: Actions = {
 					if (!id) throw new Invalid('Pick the standing night you fixed.');
 					const rule = await tx.residency.findFirst({
 						where: { id, venueId: venue.id },
-						select: { lineup: true, source: true, priceGate: true, priceAdvance: true, dayOfWeek: true, eventName: true, category: true }
+						select: { lineup: true, source: true, dayOfWeek: true, eventName: true, category: true, rotatingAct: true }
 					});
 					if (!rule) throw new Invalid('That standing night isn’t at this venue.');
 					const sLineup = lineupFrom(f, 's_lineup');
-					const gate = text(f, 's_gate') ? money(f, 's_gate', 'Gate price') : rule.priceGate;
-					const advance = text(f, 's_advance') ? money(f, 's_advance', 'Advance price') : rule.priceAdvance;
-					if (gate != null && advance != null && advance >= gate) throw new Invalid('The advance price has to be cheaper than the gate — or it isn’t an advance price.');
+					// "Different act every week" — an answer, recorded; it never clears the resident act.
+					const rotatingAct = f.has('s_rotating') ? f.get('s_rotating') === '1' : rule.rotatingAct;
+					const resident = sLineup?.length ? sLineup : rule.lineup;
+					// This week's act on a rotating night: that date's, never the rule's.
+					const guest = rotatingAct ? (lineupFrom(f, 's_guest') ?? []) : [];
+					const thisWeek = addDays(isWeek(week) ? week : nextMonday(today), rule.dayOfWeek - 1);
 					// Question 5, asked only while the category is still an inference.
 					const category = oneOf(Category, text(f, 's_category'), 'category');
 					await tx.residency.update({
@@ -333,28 +349,36 @@ export const actions: Actions = {
 							// Only what the call supplied; a blank field leaves the rule's value alone.
 							...(text(f, 's_start') && { startTime: time(f, 's_start', 'Start') }),
 							...(text(f, 's_end') && { endTime: time(f, 's_end', 'Wrap') }),
-							...(text(f, 's_gate') && { priceGate: gate }),
-							...(text(f, 's_advance') && { priceAdvance: advance }),
 							...(category && { category, categoryAskedAt: now }),
 							...answered,
 							...(sLineup?.length && { lineup: sLineup }),
+							rotatingAct,
 							// Question 4: how long has it been running? Skippable; the month, as discovery takes it.
 							...(/^\d{4}-\d{2}$/.test(text(f, 's_since') ?? '') && { runningSince: new Date(`${text(f, 's_since')}-01T00:00:00+03:00`) }),
 							// firstConfirmedAt is set by the database the first time this is written, never after.
 							lastConfirmed: now,
 							...routed,
-							...(await provenance(sLineup?.length ? sLineup : rule.lineup, rule.source))
+							...(await provenance(ruleBills({ lineup: resident, rotatingAct }), rule.source))
 						}
 					});
+					if (guest.length) {
+						// The guest headlines that date; a house band beside them is billed after.
+						const after = await tx.residency.findUniqueOrThrow({ where: { id }, select: { source: true, claimType: true } });
+						const occurrenceId = await thisDate(tx, { residencyId: id, venueId: venue.id, date: thisWeek, eventName: rule.eventName, category: category ?? rule.category, ...after }, now);
+						const lineup = [...guest, ...resident.filter((n) => !guest.includes(n))];
+						const o = await tx.occurrence.findUniqueOrThrow({ where: { id: occurrenceId }, select: { source: true } });
+						await tx.occurrence.update({ where: { id: occurrenceId }, data: { lineup, ...(await provenance(lineup, o.source)) } });
+					}
+					// Question 3: what entry costs — every price they volunteer, as rows.
+					await savePrices(tx, { residencyId: id }, parsePrices(f));
 					// "Every week, or just this one?" Weekly offers are the rule's; a one-off goes on
 					// this week's date of it — never the other way round.
 					if (offers) {
 						await savePerks(tx, { residencyId: id }, offers.filter((p) => p.scope !== 'once'), heard);
 						const once = offers.filter((p) => p.scope === 'once');
 						if (once.length) {
-							const date = addDays(isWeek(week) ? week : nextMonday(today), rule.dayOfWeek - 1);
 							const after = await tx.residency.findUniqueOrThrow({ where: { id }, select: { source: true, claimType: true } });
-							const occurrenceId = await thisDate(tx, { residencyId: id, venueId: venue.id, date, eventName: rule.eventName, category: category ?? rule.category, ...after }, now);
+							const occurrenceId = await thisDate(tx, { residencyId: id, venueId: venue.id, date: thisWeek, eventName: rule.eventName, category: category ?? rule.category, ...after }, now);
 							await addPerks(tx, { occurrenceId }, once, heard);
 						}
 					}
@@ -365,10 +389,8 @@ export const actions: Actions = {
 					const existing = text(f, 'occurrenceId');
 					const stored =
 						existing && existing !== 'new'
-							? await tx.occurrence.findFirst({ where: { id: existing, venueId: venue.id }, select: { source: true, residency: { select: { lineup: true } } } })
+							? await tx.occurrence.findFirst({ where: { id: existing, venueId: venue.id }, select: { source: true, residency: { select: { lineup: true, rotatingAct: true } } } })
 							: null;
-					// An empty lineup shows the standing night's, so the claim is judged on that.
-					const standing = lineup.length ? null : stored?.residency;
 					const date = text(f, 'd_date');
 					const eventName = text(f, 'd_name');
 					if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Invalid('A dated night needs its date.');
@@ -379,9 +401,6 @@ export const actions: Actions = {
 						category: oneOf(Category, text(f, 'd_category'), 'category') ?? 'OTHER',
 						startTime: time(f, 'd_start', 'Start'),
 						endTime: time(f, 'd_end', 'Wrap'),
-						priceGate: money(f, 'd_gate', 'Gate price'),
-						priceAdvance: money(f, 'd_advance', 'Advance price'),
-						priceNote: text(f, 'd_note'),
 						lineup,
 						register: oneOf(Register, text(f, 'd_register'), 'register'),
 						status: 'CONFIRMED' as const,
@@ -389,10 +408,11 @@ export const actions: Actions = {
 						confirmedBy: CALLER_NAME,
 						...answered,
 						...routed,
-						...(await provenance(lineup.length ? lineup : (standing?.lineup ?? []), stored?.source ?? null))
+						...(await provenance(billedLineup(lineup, stored?.residency), stored?.source ?? null)) // a rotating night's empty date bills nobody
 					};
 					if (existing && existing !== 'new') {
 						const o = await tx.occurrence.update({ where: { id: existing, venueId: venue.id }, data: fields, select: { residencyId: true } });
+						await savePrices(tx, { occurrenceId: existing }, parsePrices(f));
 						// On a standing night's date, an offer can be every week's — then it's the rule's.
 						const weekly = o.residencyId ? (offers ?? []).filter((p) => p.scope === 'weekly') : [];
 						await savePerks(tx, { occurrenceId: existing }, offers && offers.filter((p) => !weekly.includes(p)), heard);
@@ -402,6 +422,7 @@ export const actions: Actions = {
 						let id = `${slug(eventName)}-${date}`;
 						if (await tx.occurrence.findUnique({ where: { id } })) id = `${venue.id}-${id}`;
 						await tx.occurrence.create({ data: { id, venueId: venue.id, ...fields } });
+						await savePrices(tx, { occurrenceId: id }, parsePrices(f));
 						await savePerks(tx, { occurrenceId: id }, offers, heard);
 					}
 				}
@@ -413,7 +434,7 @@ export const actions: Actions = {
 			return fail(500, { error: 'The save failed. Nothing was written.' });
 		}
 
-		const billed = text(f, 'outcome') === 'reached' ? [...(lineupFrom(f, 's_lineup') ?? []), ...(lineupFrom(f, 'd_lineup') ?? [])] : [];
+		const billed = text(f, 'outcome') === 'reached' ? [...(lineupFrom(f, 's_lineup') ?? []), ...(lineupFrom(f, 's_guest') ?? []), ...(lineupFrom(f, 'd_lineup') ?? [])] : [];
 		redirect(303, `/calls?week=${isWeek(week) ? week : nextMonday(today)}${newActsParam(await unclassified(billed))}`);
 	}
 };

@@ -1,9 +1,10 @@
 import { error, fail } from '@sveltejs/kit';
 import { prisma, Category, Register } from '#lib/server/prisma.js';
-import { Invalid, failureMessage, money, oneOf, phone, text, time } from '#lib/server/forms.js';
+import { Invalid, failureMessage, oneOf, phone, text, time } from '#lib/server/forms.js';
 import { organiserFrom, organiserOptions } from '#lib/server/organisers.js';
 import { callPanel, whoToCall } from '#lib/build/who.js';
 import { savePerks } from '#lib/server/perks.js';
+import { PRICE_ORDER, parsePrices, priceRow, savePrices } from '#lib/server/price.js';
 import { lineupFrom, lineupSuggestions, unclassified } from '#lib/server/acts.js';
 import { isoDate, kampalaDate } from '#lib/server/register.js';
 import { kampalaToday, nextMonday } from '#lib/build/week.js';
@@ -29,7 +30,8 @@ export const load: PageServerLoad = async ({ params, url }) => {
 					perks: { select: { id: true } }
 				}
 			},
-			perks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }
+			perks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
+			prices: { orderBy: PRICE_ORDER }
 		}
 	});
 	if (!o) error(404, 'No such dated night');
@@ -59,9 +61,8 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			category: o.category,
 			startTime: o.startTime,
 			endTime: o.endTime,
-			priceGate: o.priceGate,
-			priceAdvance: o.priceAdvance,
-			priceNote: o.priceNote,
+			prices: o.prices.map(priceRow),
+			priceNote: o.priceNote, // the old free-text tiers: shown, never written again
 			lineup: o.lineup,
 			register: o.register,
 			status: o.status,
@@ -97,9 +98,6 @@ export const actions: Actions = {
 						category: oneOf(Category, text(f, 'category'), 'category') ?? 'OTHER',
 						startTime: time(f, 'startTime', 'Start'),
 						endTime: time(f, 'endTime', 'Wrap'),
-						priceGate: money(f, 'priceGate', 'Gate price'),
-						priceAdvance: money(f, 'priceAdvance', 'Advance price'),
-						priceNote: text(f, 'priceNote'),
 						...(lineup !== undefined && { lineup }),
 						register: oneOf(Register, text(f, 'register'), 'register'),
 						...(organiserId !== undefined && { organiserId }),
@@ -108,6 +106,7 @@ export const actions: Actions = {
 					}
 				});
 				if (count === 0) throw new Invalid('This night changed since you loaded the page — reload to see the latest.');
+				await savePrices(tx, { occurrenceId: params.id }, parsePrices(f));
 				await savePerks(tx, { occurrenceId: params.id }, f);
 			});
 		} catch (e) {

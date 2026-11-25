@@ -5,7 +5,7 @@
 // from the register and an empty line typed by hand — that line is the
 // comparative judgement Rule F2 protects, and a template would forge it.
 
-import { addDays, dayHeading, recommendable, shillings, shortDate, type Register, type Row } from './week.js';
+import { addDays, dayHeading, recommendable, shortDate, type Register, type Row } from './week.js';
 
 export const REGISTERS: Register[] = ['CHILL', 'SOCIAL', 'HIGH_ENERGY'];
 export const REGISTER_LABEL: Record<Register, string> = { CHILL: 'Chill', SOCIAL: 'Social', HIGH_ENERGY: 'High-Energy' };
@@ -65,7 +65,7 @@ export function entryOf(r: Row): Entry {
 		paidClient: !!r.venue.paidClient,
 		category: r.category,
 		startTime: r.startTime!,
-		price: r.priceGate == null ? null : shillings(r.priceGate),
+		price: r.price.entry, // derived for the row's date (lib/price.ts); "from 20K" when it has tiers
 		register: r.register!,
 		perk: p ? [p.label, p.condition].filter(Boolean).join(' · ') : null,
 		claimType: r.claimType,

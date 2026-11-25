@@ -92,3 +92,15 @@ test('the call screen’s read-only reason', () => {
 	assert.equal(t([standing(null)]), 'Tier C · this week — a night here has never been confirmed');
 	assert.equal(t([]), 'No tier — no night on file to call about');
 });
+
+test('a rotating night is never A: held two years, it is still B — and C until confirmed', () => {
+	const today = '2026-11-12';
+	const held: Night = { kind: 'standing', lastConfirmed: '2026-11-05', runningSince: '2024-11-01', firstConfirmedAt: '2025-01-10' };
+	assert.equal(tierForNight(held, today), 'A');
+	assert.equal(tierForNight({ ...held, rotating: true }, today), 'B');
+	assert.equal(tierForNight({ ...held, rotating: true, lastConfirmed: null }, today), 'C');
+	// B comes due a week after each confirmation, so it is back on the round every week by itself.
+	assert.equal(dueDateForNight({ ...held, rotating: true }, today), '2026-11-12');
+	assert.equal(dueDateForNight(held, today), '2026-12-05');
+	assert.match(describeVenueTier([{ ...held, rotating: true }], today).text, /Tier B · weekly — .*a different act every week/);
+});

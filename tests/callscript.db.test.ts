@@ -50,7 +50,7 @@ type Offer = { id?: string; label: string; scope?: 'weekly' | 'once'; confirmed?
 /** A reached call to the venue, as the screen posts it: blank fields are blank strings. */
 function call(fields: Record<string, string>, offers: Offer[] | null = []) {
 	const f = new FormData();
-	for (const [k, v] of Object.entries({ outcome: 'reached', dial: 'venue', source: 'OWNER', week, s_start: '', s_end: '', s_gate: '', s_advance: '', s_since: '', s_category: '', ...fields })) f.set(k, v);
+	for (const [k, v] of Object.entries({ outcome: 'reached', dial: 'venue', source: 'OWNER', week, s_start: '', s_end: '', s_since: '', s_category: '', ...fields })) f.set(k, v);
 	if (offers) {
 		f.set('perks_sent', '1');
 		for (const o of offers) {
@@ -148,21 +148,12 @@ test('"they have none" is stored, and the offers question is gone from the next 
 test('a call saves with every new field left blank, and blanks nothing', () =>
 	rolledBack(async (tx) => {
 		const { v, r } = await setup(tx, 'blank');
-		await tx.residency.update({ where: { id: r.id }, data: { priceGate: 20000, startTime: '21:00' } });
+		await tx.residency.update({ where: { id: r.id }, data: { startTime: '21:00', prices: { create: { label: 'Entry', amount: 20000, timing: 'GATE' } } } });
 		await save(v.id, call({ mode: 'standing', residencyId: r.id }, []));
-		const after = await tx.residency.findUniqueOrThrow({ where: { id: r.id } });
-		assert.deepEqual([after.priceGate, after.priceAdvance, after.startTime, after.category, after.categoryAskedAt, after.offersAskedAt], [20000, null, '21:00', 'THEMED_NIGHT', null, null]);
+		const after = await tx.residency.findUniqueOrThrow({ where: { id: r.id }, include: { prices: true } });
+		assert.deepEqual([after.prices.map((p) => p.amount), after.startTime, after.category, after.categoryAskedAt, after.offersAskedAt], [[20000], '21:00', 'THEMED_NIGHT', null, null]);
 		assert.equal(await tx.perk.count({ where: { residencyId: r.id } }), 0);
 		assert.ok(after.lastConfirmed);
-	}));
-
-test('an advance price is kept, and refused if it isn’t cheaper than the gate', () =>
-	rolledBack(async (tx) => {
-		const { v, r } = await setup(tx, 'advance');
-		await save(v.id, call({ mode: 'standing', residencyId: r.id, s_gate: '30000', s_advance: '20000' }));
-		assert.equal((await tx.residency.findUniqueOrThrow({ where: { id: r.id } })).priceAdvance, 20000);
-		const res: any = await (actions.save as any)({ params: { venueId: v.id }, request: new Request('http://x/', { method: 'POST', body: call({ mode: 'standing', residencyId: r.id, s_advance: '30000' }) }) });
-		assert.match(res.data.error, /cheaper than the gate/);
 	}));
 
 test('question 6 no longer overwrites a register judged in the room', () =>

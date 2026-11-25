@@ -76,7 +76,7 @@ export async function loadDiscovery(today: string, db: Tx = prisma) {
  */
 export async function derivedCadence(today: string, until: string, db: Tx = prisma): Promise<QueueDue[]> {
 	const [standing, oneOffs] = await Promise.all([
-		db.residency.findMany({ where: { active: true }, select: { venueId: true, lastConfirmed: true, runningSince: true, firstConfirmedAt: true } }),
+		db.residency.findMany({ where: { active: true }, select: { venueId: true, lastConfirmed: true, runningSince: true, firstConfirmedAt: true, rotatingAct: true } }),
 		// A dated row that overrides a standing night confirms that date, not the rule.
 		db.occurrence.findMany({
 			where: { residencyId: null, status: { not: 'CANCELLED' }, date: { gte: asDate(today) } },
@@ -86,7 +86,7 @@ export async function derivedCadence(today: string, until: string, db: Tx = pris
 	const nights = new Map<string, Night[]>();
 	const push = (venueId: string, n: Night) => nights.set(venueId, [...(nights.get(venueId) ?? []), n]);
 	for (const r of standing)
-		push(r.venueId, { kind: 'standing', lastConfirmed: kampalaDate(r.lastConfirmed), runningSince: kampalaDate(r.runningSince), firstConfirmedAt: kampalaDate(r.firstConfirmedAt) });
+		push(r.venueId, { kind: 'standing', lastConfirmed: kampalaDate(r.lastConfirmed), runningSince: kampalaDate(r.runningSince), firstConfirmedAt: kampalaDate(r.firstConfirmedAt), rotating: r.rotatingAct });
 	for (const o of oneOffs) push(o.venueId, { kind: 'one-off', date: isoDate(o.date), confirmed: o.status === 'CONFIRMED' });
 
 	const due: QueueDue[] = [];
@@ -116,7 +116,9 @@ export async function loadOwed(week: string, today: string, db: Tx = prisma) {
 			where: {
 				date: { gte: asDate(today < week ? today : week), lte: asDate(weekEnd) },
 				status: { not: 'CANCELLED' }
-			}
+			},
+			// Priced: its own rows, or — an override with none — the standing night's.
+			include: { prices: { select: { id: true }, take: 1 }, residency: { select: { prices: { select: { id: true }, take: 1 } } } }
 		}),
 		// The cadence: derived from the nights, due today or earlier.
 		derivedCadence(today, today, db),
@@ -169,7 +171,7 @@ export async function loadOwed(week: string, today: string, db: Tx = prisma) {
 			date: isoDate(o.date),
 			eventName: o.eventName,
 			startTime: o.startTime,
-			priceGate: o.priceGate,
+			priced: o.prices.length > 0 || (o.residency?.prices.length ?? 0) > 0,
 			register: o.register,
 			status: o.status
 		})),

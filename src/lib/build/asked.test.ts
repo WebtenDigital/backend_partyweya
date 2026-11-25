@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { CALL_OWNED, notAsked, originLabel, registerOrigin, type AskedNight } from './asked.ts';
 import { resolvePerks, type PerkIn } from './week.ts';
 
-const blank: AskedNight = { kind: 'standing', startTime: null, endTime: null, priceGate: null, priceAdvance: null, perks: [], categoryAskedAt: null, runningSince: null, lineup: [] };
+const blank: AskedNight = { kind: 'standing', startTime: null, endTime: null, prices: [], perks: [], categoryAskedAt: null, runningSince: null, lineup: [] };
 const nobody = { conversationTest: null, contactName: null, contactRole: null };
 
 test('every call-owned field with nothing in it is NOT ASKED YET', () => {
@@ -12,7 +12,7 @@ test('every call-owned field with nothing in it is NOT ASKED YET', () => {
 });
 
 test('a field with an answer is not flagged — and a free night (gate 0) is an answer', () => {
-	const night: AskedNight = { ...blank, startTime: '21:00', endTime: '02:00', priceGate: 0, priceAdvance: 15000, perks: [{}], categoryAskedAt: '2026-11-11', runningSince: '2025-03-01', lineup: ['The Clan'] };
+	const night: AskedNight = { ...blank, startTime: '21:00', endTime: '02:00', prices: [{ amount: 0 }], perks: [{}], categoryAskedAt: '2026-11-11', runningSince: '2025-03-01', lineup: ['The Clan'] };
 	assert.deepEqual([...notAsked(night, { conversationTest: 'NO', contactName: 'Moses', contactRole: 'MANAGER' })], []);
 });
 
@@ -54,4 +54,10 @@ test('a one-off offer on a standing night’s date adds to the weekly ones, not 
 	const once = [perk('Free entry before 9'), perk('5 Beers at 25K')];
 	assert.deepEqual(resolvePerks('2026-11-14', once, weekly).map((p) => p.label), ['5 beers at 25K', 'Free entry before 9']);
 	assert.deepEqual(resolvePerks('2026-11-14', null, weekly).map((p) => p.label), ['5 beers at 25K']);
+});
+
+test('an empty act reads NOT ASKED YET — unless "different act every week" was recorded', () => {
+	assert.ok(notAsked({ ...blank, rotatingAct: false }, nobody).has('lineup'));
+	assert.ok(!notAsked({ ...blank, rotatingAct: true }, nobody).has('lineup'));
+	assert.ok(!notAsked({ ...blank, lineup: ['Sam Mugagga and the Genius Pals Band'], rotatingAct: true }, nobody).has('lineup'));
 });

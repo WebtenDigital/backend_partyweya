@@ -3,6 +3,7 @@
 import { prisma } from './prisma.js';
 import type { Tx } from './db.js';
 import { billingKey, billings } from './acts.js';
+import { PRICE_ORDER, priceRow } from './price.js';
 import {
 	addDays,
 	buildWeek,
@@ -56,11 +57,11 @@ export async function loadWeek(week: string, db: Tx = prisma) {
 	const [residencies, occurrences] = await Promise.all([
 		db.residency.findMany({
 			where: { active: true },
-			include: { venue: { include: { zone: true } }, perks: true }
+			include: { venue: { include: { zone: true } }, perks: true, prices: { orderBy: PRICE_ORDER } }
 		}),
 		db.occurrence.findMany({
 			where: { date: { gte: asDate(week), lte: asDate(weekEnd) } },
-			include: { venue: { include: { zone: true } }, perks: true }
+			include: { venue: { include: { zone: true } }, perks: true, prices: { orderBy: PRICE_ORDER } }
 		})
 	]);
 
@@ -74,7 +75,7 @@ export async function loadWeek(week: string, db: Tx = prisma) {
 				category: r.category,
 				dayOfWeek: r.dayOfWeek,
 				startTime: r.startTime,
-				priceGate: r.priceGate,
+				prices: r.prices.map(priceRow),
 				register: r.register as Register,
 				recurrence: r.recurrence,
 				claimType: r.claimType,
@@ -96,8 +97,7 @@ export async function loadWeek(week: string, db: Tx = prisma) {
 				eventName: o.eventName,
 				category: o.category,
 				startTime: o.startTime,
-				priceGate: o.priceGate,
-				priceNote: o.priceNote,
+				prices: o.prices.map(priceRow),
 				register: o.register as Register | null,
 				claimType: o.claimType,
 				source: o.source,

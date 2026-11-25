@@ -50,6 +50,8 @@ const CONSTRAINTS: Record<string, string> = {
 	Venue_name_key: 'A venue with that name is already in the register.',
 	transferred_needs_transferring_act:
 		'TRANSFERRED needs someone in the lineup whose own act record says they transfer. Set that on the act first, or claim FACTUAL.',
+	transferred_rotating_needs_dated_lineup:
+		'A different act every week transfers nothing until that date’s act is named — name them on the date, or claim FACTUAL.',
 	act_transfers_needs_note: 'Saying an act transfers needs a note on why.',
 	reminder_one_subject: 'A reminder hangs off one record — a venue, an act, an organiser or a night. Pick which.',
 	reminder_needs_body: 'Say what the reminder is for.',

@@ -13,7 +13,7 @@ const night = (o: Partial<QueueResidency> & { id: string; venueId: string }): Qu
 });
 const dated = (o: Partial<QueueOccurrence> & { id: string; venueId: string; date: string }): QueueOccurrence => ({
 	organiserId: null, residencyId: null, bookingPhone: null, bookingPhoneNote: null, eventName: o.id,
-	startTime: '21:00', priceGate: 0, register: 'SOCIAL', status: 'CONFIRMED', ...o
+	startTime: '21:00', priced: true, register: 'SOCIAL', status: 'CONFIRMED', ...o
 });
 const owed = (q: ReturnType<typeof callQueue>, reminders: { due: string | null }[] = []) => owedNow(q, reminders, today);
 

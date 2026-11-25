@@ -1,9 +1,10 @@
 import { error, fail } from '@sveltejs/kit';
 import { prisma, Category, Register } from '#lib/server/prisma.js';
-import { Invalid, failureMessage, money, oneOf, phone, text, time } from '#lib/server/forms.js';
+import { Invalid, failureMessage, oneOf, phone, text, time } from '#lib/server/forms.js';
 import { organiserFrom, organiserOptions } from '#lib/server/organisers.js';
 import { callPanel, whoToCall } from '#lib/build/who.js';
 import { savePerks } from '#lib/server/perks.js';
+import { PRICE_ORDER, parsePrices, priceRow, savePrices } from '#lib/server/price.js';
 import { billingKey, billings, lineupFrom, lineupSuggestions, unclassified } from '#lib/server/acts.js';
 import { asDate, isoDate, kampalaDate } from '#lib/server/register.js';
 import { kampalaToday, nextMonday } from '#lib/build/week.js';
@@ -18,7 +19,8 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			include: {
 				venue: { select: { id: true, name: true, phones: true, verifiedPhone: true, whatsapp: true, zone: { select: { name: true, division: true } } } },
 				organiser: { select: { id: true, name: true, contactName: true, role: true, phone: true, whatsapp: true } },
-				perks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }
+				perks: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
+				prices: { orderBy: PRICE_ORDER }
 			}
 		}),
 		prisma.residency.count({ where: { active: true } }),
@@ -54,9 +56,10 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			dayOfWeek: r.dayOfWeek,
 			startTime: r.startTime,
 			endTime: r.endTime,
-			priceGate: r.priceGate,
+			prices: r.prices.map(priceRow),
 			register: r.register,
 			lineup: r.lineup,
+			rotatingAct: r.rotatingAct,
 			runningSince: kampalaDate(r.runningSince)?.slice(0, 7) ?? null,
 			active: r.active,
 			stoppedReason: r.stoppedReason,
@@ -114,9 +117,9 @@ export const actions: Actions = {
 						dayOfWeek: day,
 						startTime: time(f, 'startTime', 'Start'),
 						endTime: time(f, 'endTime', 'Wrap'),
-						priceGate: money(f, 'priceGate', 'Gate price'),
 						register,
 						...(lineup !== undefined && { lineup }),
+						...(f.has('rotatingAct_sent') && { rotatingAct: f.get('rotatingAct') === 'on' }),
 						runningSince: running ? asDate(`${running}-01`) : null,
 						notes: text(f, 'notes'),
 						...(organiserId !== undefined && { organiserId }),
@@ -127,6 +130,7 @@ export const actions: Actions = {
 					}
 				});
 				if (count === 0) throw new Invalid('This standing night changed since you loaded the page — reload to see the latest.');
+				await savePrices(tx, { residencyId: params.id }, parsePrices(f));
 				await savePerks(tx, { residencyId: params.id }, f);
 			});
 		} catch (e) {

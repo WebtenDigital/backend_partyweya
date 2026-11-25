@@ -11,8 +11,7 @@ import { shortDate } from './week.js';
 export const CALL_OWNED = [
 	'startTime',
 	'endTime',
-	'priceGate',
-	'priceAdvance',
+	'prices', //  any price row; a night with none is NOT ASKED YET, never free
 	'perks',
 	'category',
 	'runningSince',
@@ -27,13 +26,13 @@ export interface AskedNight {
 	kind: 'standing' | 'dated';
 	startTime: string | null;
 	endTime: string | null;
-	priceGate: number | null;
-	priceAdvance: number | null;
+	prices: unknown[];
 	perks: unknown[];
 	offersAskedAt?: string | null; //  answered, "none" included
 	categoryAskedAt?: string | null; // a standing night's; a dated night's category is asked every time
 	runningSince?: string | null; //   a standing night's
 	lineup: string[];
+	rotatingAct?: boolean; //          a standing night's recorded "different act every week"
 }
 
 export interface AskedVenue {
@@ -47,7 +46,9 @@ export function notAsked(night: AskedNight | null, venue: AskedVenue): Set<CallO
 	const gaps = new Set<CallOwned>();
 	const empty = (v: unknown) => v == null || v === '' || (Array.isArray(v) && v.length === 0);
 	if (night) {
-		for (const k of ['startTime', 'endTime', 'priceGate', 'priceAdvance', 'lineup'] as const) if (empty(night[k])) gaps.add(k);
+		for (const k of ['startTime', 'endTime', 'prices'] as const) if (empty(night[k])) gaps.add(k);
+		// No act AND not recorded as rotating is never-asked; "different every week" is an answer.
+		if (empty(night.lineup) && !night.rotatingAct) gaps.add('lineup');
 		// Offers on file answer it; so does "none", which only offersAskedAt can hold.
 		if (empty(night.offersAskedAt) && empty(night.perks)) gaps.add('perks');
 		if (night.kind === 'standing') {

@@ -20,6 +20,7 @@ import { asDate, isoDate, kampalaDate } from './register.js';
 import { claimFor } from '../provenance.js';
 import { lineupTransfers } from './provenance.js';
 import { isoDay } from '../build/add.js';
+import { PRICE_ORDER, entryRow } from './price.js';
 
 export interface VisitInput {
 	ref: string; //                 a residency id or an occurrence id
@@ -53,7 +54,8 @@ const sameLineup = (a: string[], b: string[]) => a.map((s) => s.trim().toLowerCa
 /** The night a write-up is about, and what the register says about it. */
 export async function visitNight(db: Tx, ref: string) {
 	const venue = { select: { id: true, name: true, zoneName: true, provisionalRegister: true, conversationTest: true, conversationTestAt: true, lastAttended: true } };
-	const r = await db.residency.findUnique({ where: { id: ref }, include: { venue } });
+	const prices = { orderBy: PRICE_ORDER };
+	const r = await db.residency.findUnique({ where: { id: ref }, include: { venue, prices } });
 	if (r)
 		return {
 			kind: 'residency' as const,
@@ -62,11 +64,12 @@ export async function visitNight(db: Tx, ref: string) {
 			venue: r.venue,
 			eventName: r.eventName,
 			category: r.category,
-			said: { start: r.startTime, end: r.endTime, price: r.priceGate, lineup: r.lineup }
+			// The price checked is the night's entry row — the one "what did you pay at the gate" means.
+			said: { start: r.startTime, end: r.endTime, price: entryRow(r.prices)?.amount ?? null, lineup: r.lineup }
 		};
 	const o = await db.occurrence.findUnique({
 		where: { id: ref },
-		include: { venue, residency: { select: { startTime: true, endTime: true, priceGate: true, lineup: true } } }
+		include: { venue, prices, residency: { select: { startTime: true, endTime: true, prices, lineup: true } } }
 	});
 	if (o)
 		return {
@@ -79,7 +82,7 @@ export async function visitNight(db: Tx, ref: string) {
 			said: {
 				start: o.startTime ?? o.residency?.startTime ?? null,
 				end: o.endTime ?? o.residency?.endTime ?? null,
-				price: o.priceGate ?? o.residency?.priceGate ?? null,
+				price: entryRow(o.prices.length ? o.prices : (o.residency?.prices ?? []))?.amount ?? null,
 				lineup: o.lineup.length ? o.lineup : (o.residency?.lineup ?? [])
 			}
 		};
@@ -149,10 +152,10 @@ export async function recordVisit(db: Tx, v: VisitInput) {
 				...(later(n.occurrence.confirmedOn) && { confirmedOn: at, confirmedBy: v.initials }),
 				// "Correct the register too" — deliberate, per field, never a side effect.
 				...(v.correct.start && actualStart && { startTime: actualStart }),
-				...(v.correct.price && actualPrice != null && { priceGate: actualPrice }),
 				...(v.correct.lineup && actualLineup.length && { lineup: actualLineup })
 			}
 		});
+		if (v.correct.price && actualPrice != null) await correctEntry(db, { occurrenceId: n.id }, actualPrice, n.occurrence.prices, n.occurrence.residency?.prices);
 	} else {
 		// A standing night: find or create the override Occurrence for that date —
 		// what buildWeek already reads as one. Its own fields stay empty so the night
@@ -190,10 +193,10 @@ export async function recordVisit(db: Tx, v: VisitInput) {
 				...(later(r.attendedAt) && { source: 'ATTENDED', claimType, attendedAt: at, attendedBy: v.initials, register: v.register, clearsF2: v.clears }),
 				...(later(r.lastConfirmed) && { lastConfirmed: at }),
 				...(v.correct.start && actualStart && { startTime: actualStart }),
-				...(v.correct.price && actualPrice != null && { priceGate: actualPrice }),
 				...(v.correct.lineup && actualLineup.length && { lineup: actualLineup })
 			}
 		});
+		if (v.correct.price && actualPrice != null) await correctEntry(db, { residencyId: r.id }, actualPrice, r.prices);
 	}
 
 	// The venue: judged register beside the guess, never over it. A phone answer to
@@ -214,4 +217,26 @@ export async function recordVisit(db: Tx, v: VisitInput) {
 	}
 
 	return { occurrenceId, date, record: n.kind === 'residency' ? `/residencies/${n.id}` : `/occurrences/${n.id}` };
+}
+
+type PriceOnFile = { id: string; label: string; amount: number; timing: 'GATE' | 'ADVANCE' | null; availableUntil: Date | null; perTable: boolean; seats: number | null; sortOrder: number };
+
+/**
+ * "Correct the register too", for the price: the night's entry row takes what
+ * was paid at the gate; with none, an "Entry" row at the gate is added. A
+ * dated row still reading its standing night's prices gets its own copy first,
+ * so correcting one date's entry never drops that night's other prices.
+ */
+async function correctEntry(db: Tx, parent: { residencyId: string } | { occurrenceId: string }, amount: number, own: PriceOnFile[], inherited: PriceOnFile[] = []) {
+	let rows = own;
+	if (!own.length && inherited.length) {
+		for (const p of inherited) {
+			const { label, amount: a, timing, availableUntil, perTable, seats, sortOrder } = p; // never the rule's parent id
+			await db.price.create({ data: { ...parent, label, amount: a, timing, availableUntil, perTable, seats, sortOrder } });
+		}
+		rows = await db.price.findMany({ where: parent, orderBy: PRICE_ORDER });
+	}
+	const entry = entryRow(rows);
+	if (entry) await db.price.update({ where: { id: entry.id }, data: { amount } });
+	else await db.price.create({ data: { ...parent, label: 'Entry', timing: 'GATE', amount, sortOrder: rows.length } });
 }

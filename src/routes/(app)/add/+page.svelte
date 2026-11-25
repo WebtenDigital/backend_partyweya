@@ -7,6 +7,7 @@
 	import { dayHeading, shillings } from '#lib/build/week.js';
 	import PerksEditor, { type PerkRow } from '#lib/components/PerksEditor.svelte';
 	import LineupInput from '#lib/components/LineupInput.svelte';
+	import PricesEditor from '#lib/components/PricesEditor.svelte';
 	import { claimFor } from '#lib/provenance.js';
 	import type { Source } from '#lib/server/prisma.js';
 	import OrganiserPicker from '#lib/components/OrganiserPicker.svelte';
@@ -38,12 +39,11 @@
 	// 4 · when and cost
 	let start = $state('');
 	let end = $state('');
-	let gate = $state('');
-	let advance = $state('');
 	let register = $state('');
 	// The act and the night's offers — optional, so a flyer goes in once, in one pass.
 	let lineup = $state<string[]>([]);
 	let lineupEl = $state<LineupInput>();
+	let rotating = $state(false);
 	let offers = $state<PerkRow[]>([]);
 	const offerCount = $derived(offers.filter((p) => p.label.trim()).length);
 	// 5 · provenance — no default, on purpose
@@ -89,7 +89,6 @@
 		day = String(existing.dayOfWeek);
 		start = existing.startTime ?? start;
 		end = existing.endTime ?? end;
-		gate = existing.priceGate != null ? String(existing.priceGate) : gate;
 		register = existing.register;
 		runningSince = existing.runningSince ?? runningSince;
 	}
@@ -130,7 +129,7 @@
 					['venueId', v],
 					['dayOfWeek', day || '—'],
 					['startTime', ...c(start, 'text-vetted')],
-					['priceGate', gate || 'null'],
+					['prices', 'as entered — none keeps the night’s'],
 					['register', ...c(register, REGISTER_TONE[register])],
 					['lineup', ...c(lineup.length ? JSON.stringify(lineup) : updating && existing?.lineup.length ? JSON.stringify(existing.lineup) : null)],
 					['runningSince', ...c(runningSince)],
@@ -152,8 +151,7 @@
 					? [['status', 'CANCELLED', 'text-energy'] as [string, string, string]]
 					: [
 							['startTime', ...c(start, 'text-vetted')] as [string, string, string],
-							['priceGate', gate || 'null'] as [string, string],
-							['priceAdvance', advance || 'null'] as [string, string],
+							['prices', 'as entered'] as [string, string],
 							['register', ...c(register, REGISTER_TONE[register])] as [string, string, string],
 							['lineup', ...c(lineup.length ? JSON.stringify(lineup) : null)] as [string, string, string],
 							['status', prov?.confirms ? 'CONFIRMED' : 'LEAD', prov?.confirms ? 'text-vetted' : 'text-social'] as [string, string, string]
@@ -209,6 +207,7 @@
 			</div>
 		</div>
 		<div class="flex items-center gap-4">
+			<a href="/add/import" class="btn text-sm" title="One-off nights from the Upcoming Events sheet">Import from the sheet</a>
 			<ThisWeek />
 			<p class="text-right font-mono text-xs text-dim">esc to cancel<br />⌘↵ to save</p>
 		</div>
@@ -346,17 +345,15 @@
 			{#if repeat !== 'cancelled'}
 				<section class="panel space-y-3">
 					<h2 class="step"><span>4</span>When, what it costs, and what else is on</h2>
-					<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+					<div class="grid grid-cols-2 gap-3">
 						<label class="field"><span>Starts</span><input name="start" class="input" placeholder="19:00" bind:value={start} />
 							{#if !start}<span class="text-social">Required to publish — a row without one cannot be forwarded.</span>{/if}
 						</label>
 						<label class="field"><span>Wraps</span><input name="end" class="input" placeholder="22:00" bind:value={end} /></label>
-						<label class="field"><span>At the gate</span><input name="gate" class="input" inputmode="numeric" placeholder="0 for free" bind:value={gate} />
-							{#if gate}<span>{shillings(Number(gate.replace(/[,\s]/g, '')))}</span>{/if}
-						</label>
-						<label class="field"><span>In advance</span>
-							<input name="advance" class="input" inputmode="numeric" placeholder="—" bind:value={advance} disabled={weekly} title={weekly ? 'Standing nights carry one gate price' : ''} />
-						</label>
+					</div>
+					<!-- As the flyer prints them, in its words. A standing night isn't asked about advance prices. -->
+					<div class="field"><span>Prices — “VIP 50K”, “Table for 8 · 1M”, an early bird with its deadline</span>
+						<PricesEditor today={data.today} timing={!weekly} />
 					</div>
 					<div class="grid gap-3 sm:grid-cols-[200px_minmax(0,1fr)]">
 						<label class="field"><span>Number on the flyer <span class="text-dim/70">— internal</span></span>
@@ -384,13 +381,23 @@
 					<div class="space-y-3 border-t border-line pt-3">
 						<label class="field">
 							<span>The act <span class="text-dim/70">— optional</span></span>
-							<LineupInput bind:this={lineupEl} bind:names={lineup} suggestions={data.suggestions} placeholder="A resident band or DJ. Leave empty if it rotates." onresolved={() => formEl.requestSubmit()} />
+							<LineupInput bind:this={lineupEl} bind:names={lineup} suggestions={data.suggestions} placeholder="A resident band or DJ" onresolved={() => formEl.requestSubmit()} />
 							<span>
-								{#if weekly || !repeat}On a standing night this is the <em>resident</em> act, so it fills every week. A one-week guest belongs on an override, not here.
+								{#if weekly || !repeat}On a standing night this is the <em>resident</em> act, so it fills every week. A one-week guest belongs on an override, not here. Different every week? Say so below — empty only means not known.
 								{:else}This date’s act. {repeat === 'override' && replaces?.lineup.length ? `Leave it empty to show the usual: ${replaces.lineup.join(', ')}.` : ''}{/if}
 								{#if updating}Left as it is if you leave this empty.{/if}
 							</span>
 						</label>
+						{#if weekly}
+							<!-- A recorded answer, not an empty field: rotating keeps the night in the weekly round and off TRANSFERRED. -->
+							<input type="hidden" name="rotating" value={rotating ? '1' : ''} />
+							<button
+								type="button"
+								class="h-11 rounded-md border px-3 text-sm {rotating ? 'border-chill bg-chill/10 text-fg' : 'border-line text-dim hover:border-dim hover:text-fg'}"
+								aria-pressed={rotating}
+								onclick={() => (rotating = !rotating)}>{rotating ? '✓ ' : ''}Different act every week</button
+							>
+						{/if}
 						<div class="space-y-2">
 							<p class="text-xs text-dim">Offers that night <span class="text-dim/70">— optional</span></p>
 							<PerksEditor bind:rows={offers} today={data.today} />

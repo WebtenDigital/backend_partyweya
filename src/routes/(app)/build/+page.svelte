@@ -9,7 +9,6 @@
 		addDays,
 		dayHeading,
 		maskPhone,
-		shillings,
 		shortDate,
 		type Register,
 		type Row
@@ -243,11 +242,13 @@
 								</div>
 
 								<div class="font-mono">
-									{shillings(r.priceGate)}
+									{r.price.entry ?? '—'}
 									{#if r.usualPrice != null}
-										<span class="block text-[10px] text-dim">usually {shillings(r.usualPrice)}</span>
-									{:else if r.extraTiers}
-										<span class="block text-[10px] text-dim">+{plural(r.extraTiers, 'tier')}</span>
+										<span class="block text-[10px] text-dim">usually {r.usualPrice}</span>
+									{/if}
+									{#if r.price.tables.length}
+										<!-- Per table, not per person: never the published figure. -->
+										<span class="block text-[10px] text-dim" title={r.price.tables.join('\n')}>+{plural(r.price.tables.length, 'table price')}</span>
 									{/if}
 								</div>
 

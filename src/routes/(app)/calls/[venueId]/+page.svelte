@@ -7,12 +7,13 @@
 	import Reminders from '#lib/components/Reminders.svelte';
 	import OrganiserPicker from '#lib/components/OrganiserPicker.svelte';
 	import NotAsked from '#lib/components/NotAsked.svelte';
+	import PricesEditor from '#lib/components/PricesEditor.svelte';
 	import { notAsked, originLabel, registerOrigin } from '#lib/build/asked.js';
 	import { UNKNOWN_LABEL, whoToCall } from '#lib/build/who.js';
 	import { claimFor } from '#lib/provenance.js';
 	import type { Source } from '#lib/server/prisma.js';
 	import { Q6 } from '#lib/build/calls.js';
-	import { shortDate } from '#lib/build/week.js';
+	import { addDays, dayHeading, shortDate } from '#lib/build/week.js';
 	import { showPhones } from '#lib/phones.js';
 	import type { PageProps } from './$types';
 
@@ -42,6 +43,10 @@
 	let outcome = $state('');
 	let lineup = $state<string[]>([]);
 	let lineupEl = $state<LineupInput>();
+	// A rotating night: the recorded answer "a different act every week", and this week's guest.
+	let rotating = $state(false);
+	let guest = $state<string[]>([]);
+	let guestEl = $state<LineupInput>();
 	function pick(m: typeof mode) {
 		mode = m;
 	}
@@ -50,6 +55,10 @@
 
 	const residency = $derived(data.residencies.find((r) => r.id === residencyId));
 	const occurrence = $derived(data.occurrences.find((o) => o.id === occurrenceId));
+	// A dated night's prices: its own, else — an override — the standing night's it inherits.
+	const datedPrices = $derived(
+		occurrence?.prices.length ? occurrence.prices : (data.residencies.find((r) => r.id === occurrence?.residencyId)?.prices ?? [])
+	);
 	// Who the rule says owns the night being logged — the same rule as the panel and the queue.
 	const who = $derived(
 		mode === 'standing'
@@ -88,16 +97,20 @@
 	// The claim isn't chosen: claimFor() derives it on save from the source and the lineup. Shown here
 	// so it's no surprise. Every source this screen offers derives the same way, so the default stands in.
 	const billsTransferring = $derived(
-		mode !== 'none' && lineup.some((n) => data.suggestions.find((s) => s.name.toLowerCase() === n.toLowerCase())?.transfers === true)
+		mode !== 'none' && !(mode === 'standing' && rotating) && lineup.some((n) => data.suggestions.find((s) => s.name.toLowerCase() === n.toLowerCase())?.transfers === true)
 	);
 	$effect(() => {
 		lineup = mode === 'standing' ? [...(residency?.lineup ?? [])] : [...(occurrence?.lineup ?? [])];
+		rotating = residency?.rotatingAct ?? false;
 	});
+	// The build week's date of this standing night, and who is billed on it so far.
+	const thisWeek = $derived(residency ? addDays(data.week, residency.dayOfWeek - 1) : null);
+	const thisWeeksAct = $derived(data.occurrences.find((o) => o.residencyId === residency?.id && o.date === thisWeek)?.lineup ?? []);
 
 	// A confirmed row that still can't publish: say exactly what's missing.
 	const stillBlocked = $derived(
 		mode === 'dated' && occurrence?.status === 'CONFIRMED'
-			? [!occurrence.startTime && 'start time', occurrence.priceGate == null && 'gate price', !occurrence.register && 'register'].filter(
+			? [!occurrence.startTime && 'start time', !datedPrices.length && 'price', !occurrence.register && 'register'].filter(
 					(x): x is string => !!x
 				)
 			: []
@@ -120,7 +133,7 @@
 			mode === 'standing' && residency
 				? { kind: 'standing', ...residency }
 				: mode === 'dated'
-					? { kind: 'dated', startTime: null, endTime: null, priceGate: null, priceAdvance: null, perks: [], lineup: [], ...occurrence }
+					? { kind: 'dated', startTime: null, endTime: null, perks: [], lineup: [], ...occurrence, prices: datedPrices }
 					: null,
 			data.venue
 		)
@@ -147,7 +160,7 @@
 	action="?/save"
 	bind:this={formEl}
 	use:enhance={({ cancel }) => {
-		if (!lineupEl?.confirm()) return cancel();
+		if (!lineupEl?.confirm() || (guestEl && !guestEl.confirm())) return cancel();
 		saving = true;
 		return async ({ update }) => {
 			await update({ reset: false });
@@ -295,11 +308,14 @@
 						</label>
 						{#key residencyId}
 							<!-- Nothing here is required; anything the register lacks says so (NOT ASKED YET). -->
-							<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+							<div class="grid grid-cols-2 gap-3">
 								<label class="field"><span>Starts<NotAsked when={gaps.has('startTime')} /></span><input name="s_start" class="input" placeholder="21:00" value={residency?.startTime ?? ''} /></label>
 								<label class="field"><span>Wraps<NotAsked when={gaps.has('endTime')} /></span><input name="s_end" class="input" placeholder="02:00" value={residency?.endTime ?? ''} /></label>
-								<label class="field"><span>At the gate<NotAsked when={gaps.has('priceGate')} /></span><input name="s_gate" class="input" inputmode="numeric" placeholder="20000" value={residency?.priceGate ?? ''} /></label>
-								<label class="field"><span>In advance<NotAsked when={gaps.has('priceAdvance')} /></span><input name="s_advance" class="input" inputmode="numeric" placeholder="—" value={residency?.priceAdvance ?? ''} /></label>
+							</div>
+							<!-- Question 3 stays open — "What's entry?" One number is one row; "20 ordinary, 50 VIP" is two. -->
+							<div class="space-y-2">
+								<p class="text-sm"><span class="mr-1 font-mono text-xs text-dim">3</span>“What’s entry?”<NotAsked when={gaps.has('prices')} /></p>
+								<PricesEditor prices={residency?.prices ?? []} today={data.today} />
 							</div>
 							<div class="space-y-2">
 								<p class="text-sm">
@@ -324,8 +340,37 @@
 									</select>
 								</label>
 							{/if}
-							<div class="field"><span>The resident act — leave it as it is if it hasn’t changed<NotAsked when={gaps.has('lineup')} /></span>
-								<LineupInput bind:this={lineupEl} name="s_lineup" value={residency?.lineup ?? []} bind:names={lineup} suggestions={data.suggestions} placeholder="The Clan Band" onresolved={() => formEl.requestSubmit()} />
+							<!-- The act. Three shapes: a resident, a different act every week, or both — a house band plus a guest. -->
+							<div class="space-y-2">
+								<p class="text-sm">
+									{#if rotating && residency?.lineup.length}
+										“Still {residency.lineup.join(', ')}? And who’s the guest this week?”
+									{:else if rotating}
+										“Who’s on this week?”
+									{:else if residency?.lineup.length}
+										“Still {residency.lineup.join(', ')}?”
+									{:else}
+										“Who plays — is there a resident act, or is it different every week?”
+									{/if}
+									<NotAsked when={gaps.has('lineup')} />
+								</p>
+								<input type="hidden" name="s_rotating" value={rotating ? '1' : ''} />
+								<div class="field"><span>The resident act — leave it as it is if it hasn’t changed{rotating ? '; empty if there’s no house act' : ''}</span>
+									<LineupInput bind:this={lineupEl} name="s_lineup" value={residency?.lineup ?? []} bind:names={lineup} suggestions={data.suggestions} placeholder="The Clan Band" onresolved={() => formEl.requestSubmit()} />
+								</div>
+								<button
+									type="button"
+									class="h-11 rounded-md border px-3 text-sm {rotating ? 'border-chill bg-chill/10 text-fg' : 'border-line text-dim hover:border-dim hover:text-fg'}"
+									aria-pressed={rotating}
+									onclick={() => (rotating = !rotating)}>{rotating ? '✓ ' : ''}Different act every week</button
+								>
+								{#if rotating && thisWeek}
+									<!-- Asked every week. It goes on that date, never the standing night: the rule must not collect names. -->
+									<div class="field">
+										<span>This week’s act — {dayHeading(thisWeek)}<NotAsked when={!thisWeeksAct.length} /></span>
+										<LineupInput bind:this={guestEl} name="s_guest" value={[]} bind:names={guest} suggestions={data.suggestions} placeholder={thisWeeksAct.length ? `on file: ${thisWeeksAct.join(', ')}` : 'Named — or it transfers nothing'} onresolved={() => formEl.requestSubmit()} />
+									</div>
+								{/if}
 							</div>
 						{/key}
 					{/if}
@@ -356,9 +401,15 @@
 							<label class="field col-span-2 sm:col-span-3"><span>Name</span><input name="d_name" class="input" value={occurrence?.eventName ?? ''} /></label>
 							<label class="field"><span>Starts<NotAsked when={gaps.has('startTime')} /></span><input name="d_start" class="input" placeholder="21:00" value={occurrence?.startTime ?? ''} /></label>
 							<label class="field"><span>Wraps<NotAsked when={gaps.has('endTime')} /></span><input name="d_end" class="input" placeholder="02:00" value={occurrence?.endTime ?? ''} /></label>
-							<label class="field"><span>At the gate<NotAsked when={gaps.has('priceGate')} /></span><input name="d_gate" class="input" inputmode="numeric" value={occurrence?.priceGate ?? ''} /></label>
-							<label class="field"><span>In advance<NotAsked when={gaps.has('priceAdvance')} /></span><input name="d_advance" class="input" inputmode="numeric" placeholder="—" value={occurrence?.priceAdvance ?? ''} /></label>
-							<label class="field col-span-2"><span>Price tiers as advertised</span><input name="d_note" class="input" placeholder="165K PRE | 190K AT THE GATE" value={occurrence?.priceNote ?? ''} /></label>
+							<div class="col-span-2 space-y-2 sm:col-span-4">
+								<p class="text-sm">
+									<span class="mr-1 font-mono text-xs text-dim">3</span>“What’s entry?” — then, a ticketed night: “Is it different in advance?”<NotAsked when={gaps.has('prices')} />
+								</p>
+								{#if occurrence?.residencyId && !occurrence.prices.length}
+									<p class="text-xs text-dim">Blank keeps the standing night’s price for this date.</p>
+								{/if}
+								<PricesEditor prices={occurrence?.prices ?? []} today={data.today} timing />
+							</div>
 							<label class="field"><span><span class="mr-1 font-mono text-xs text-dim">5</span>Category</span>
 								<select name="d_category" class="input" value={occurrence?.category ?? 'OTHER'}>
 									{#each CATEGORIES as c (c)}<option value={c}>{label(c)}</option>{/each}

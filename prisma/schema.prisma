@@ -113,6 +113,12 @@ enum ActRole {
   OTHER
 }
 
+// When a price is paid. Optional on a price row: most nights' one price is just "entry".
+enum PriceTiming {
+  GATE
+  ADVANCE
+}
+
 enum PerkKind {
   DRINK
   FOOD
@@ -340,9 +346,16 @@ model Residency {
   source        Source? //    who confirmed it; only ATTENDED can carry VETTED
   notes         String? // internal — never public
   lineup        String[]   @default([]) // the billing as advertised, in order — authoritative; resolved to Acts by name
+  // A different act every week — a RECORDED answer, never inferred from an empty
+  // lineup (empty is also what never-asked looks like). Not exclusive with
+  // `lineup`: a house band plus a weekly guest is the common Kampala shape. The
+  // week's act goes on that date's Occurrence, never here. Never tier A
+  // (tier.ts); never TRANSFERRED without that date's named lineup (SQL trigger).
+  rotatingAct   Boolean    @default(false)
 
   occurrences  Occurrence[]
   perks        Perk[]
+  prices       Price[]
   reminders    Reminder[]
   publications Publication[]
   visits       Visit[]
@@ -426,6 +439,7 @@ model Occurrence {
 
   publications Publication[]
   perks        Perk[]
+  prices       Price[]
   reminders    Reminder[]
   visits       Visit[]
 
@@ -520,6 +534,37 @@ model RoundupEntry {
   position Int
 
   @@id([week, key])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  PRICE — what a night costs, one row per price the venue states (exactly
+//  one parent, a CHECK in SQL, as Perk). Rows, not columns: "ordinary 20K
+//  advance, 30K gate, VIP 50K, VVIP 150K" is one night. The label is the
+//  venue's own word, verbatim — nothing sorts or filters on it, and a reader
+//  needs their word to buy the right ticket. The published figure (the floor)
+//  is derived as of a date (src/lib/price.ts), never stored. Per-table rows
+//  are a different unit and never count toward it. Replaces priceGate /
+//  priceAdvance / priceNote, which stay, unread, until the contract pass.
+// ─────────────────────────────────────────────────────────────────────
+
+model Price {
+  id             String       @id @default(cuid())
+  residency      Residency?   @relation(fields: [residencyId], references: [id], onDelete: Cascade)
+  residencyId    String?
+  occurrence     Occurrence?  @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
+  occurrenceId   String?
+  label          String //       "Entry", "VIP", "BD Squad" — as the venue says it
+  amount         Int //          UGX; 0 = free
+  timing         PriceTiming?
+  availableUntil DateTime?    @db.Date // last day it's on sale: an early bird lapses itself
+  perTable       Boolean      @default(false) // per table, not per person — never in the floor
+  seats          Int? //         a table's capacity; only with perTable
+  sortOrder      Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @default(now()) @updatedAt
+
+  @@index([residencyId])
+  @@index([occurrenceId])
 }
 
 // ─────────────────────────────────────────────────────────────────────

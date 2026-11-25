@@ -8,6 +8,7 @@
 	import OrganiserPicker from '#lib/components/OrganiserPicker.svelte';
 	import PerksEditor, { toRows, type PerkRow } from '#lib/components/PerksEditor.svelte';
 	import LineupInput from '#lib/components/LineupInput.svelte';
+	import PricesEditor from '#lib/components/PricesEditor.svelte';
 	import NewActsPrompt from '#lib/components/NewActsPrompt.svelte';
 	import { splitLineup } from '#lib/build/acts.js';
 	import { DAYS } from '#lib/build/add.js';
@@ -157,12 +158,14 @@
 				<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
 					<label class="field"><span>Starts</span><input name="startTime" class="input h-11" placeholder="21:00" bind:value={fields.start} /></label>
 					<label class="field"><span>Wraps</span><input name="endTime" class="input h-11" placeholder="—" value={r.endTime ?? ''} /></label>
-					<label class="field"><span>At the gate</span><input name="priceGate" class="input h-11" inputmode="numeric" placeholder="—" value={r.priceGate ?? ''} /></label>
 					<label class="field"><span>Register</span>
 						<select name="register" class="input h-11" bind:value={fields.register}>
 							<option value="CHILL">CHILL</option><option value="SOCIAL">SOCIAL</option><option value="HIGH_ENERGY">HIGH_ENERGY</option>
 						</select>
 					</label>
+				</div>
+				<div class="field"><span>Prices — the venue’s own words; a table is per table, never the “from” price</span>
+					<PricesEditor prices={r.prices} today={data.today} />
 				</div>
 			</section>
 
@@ -175,6 +178,11 @@
 				{#key `${r.updatedAt}-${lineupKey}`}
 					<LineupInput bind:this={lineupEl} value={fields.lineup} bind:names={fields.lineup} suggestions={data.suggestions} placeholder="The Clan Band" onresolved={() => formEl.requestSubmit()} />
 				{/key}
+				<!-- Not exclusive with a resident act: a house band plus a weekly guest is the common shape. -->
+				<input type="hidden" name="rotatingAct_sent" value="1" />
+				<label class="flex min-h-11 items-center gap-2 text-sm">
+					<input type="checkbox" name="rotatingAct" checked={r.rotatingAct} /> Different act every week — each week’s act goes on that date, never here
+				</label>
 				{#if fields.lineup.length > 1}<p class="text-xs text-dim">Billed as: <span class="text-fg">{billingLine}</span>{unchanged ? '' : ' — the connecting words come from each act’s role once saved'}</p>{/if}
 				{#if form?.newNames?.length && !saving}<NewActsPrompt names={form.newNames} />{/if}
 				{#if movedFrom}

@@ -3,6 +3,7 @@
 // Pure — no database — so it can be checked against fixtures.
 
 import { vouchDay, vouchExpires, vouchExpiry, vouchState } from './vouch.js';
+import { priceLabel, type PriceLabel, type PriceRow } from '../price.js';
 
 export type Register = 'CHILL' | 'SOCIAL' | 'HIGH_ENERGY';
 export const REGISTERS: Register[] = ['CHILL', 'SOCIAL', 'HIGH_ENERGY'];
@@ -57,7 +58,7 @@ export interface ResidencyIn {
 	category: string;
 	dayOfWeek: number; // 1 = Monday … 7 = Sunday
 	startTime: string | null;
-	priceGate: number | null;
+	prices: PriceRow[];
 	register: Register;
 	recurrence: string;
 	claimType: string | null;
@@ -78,8 +79,7 @@ export interface OccurrenceIn {
 	eventName: string;
 	category: string;
 	startTime: string | null;
-	priceGate: number | null;
-	priceNote: string | null;
+	prices: PriceRow[]; // empty on an override = the standing night's
 	register: Register | null;
 	claimType: string | null;
 	source: string | null;
@@ -103,9 +103,9 @@ export interface Row {
 	venue: VenueIn;
 	category: string;
 	startTime: string | null;
-	priceGate: number | null;
-	usualPrice: number | null; // the residency's price, when an override changes it
-	extraTiers: number;
+	prices: PriceRow[]; //       the night's rows: an override's own, else the standing night's
+	price: PriceLabel; //        as published ON THIS ROW'S DATE (lib/price.ts) — never stored
+	usualPrice: string | null; // the standing night's figure, when an override's differs
 	register: Register | null;
 	lineup: string[];
 	billing: string | null; // the lineup as a sentence (compose_billing), filled in by the loader
@@ -152,17 +152,14 @@ export const isMonday = (date: string) => new Date(`${date}T00:00:00Z`).getUTCDa
 
 // ── assembling the week ─────────────────────────────────────────────────
 
-/** "165K PRE | 190K AT THE GATE" → 1 tier beyond the one shown. */
-const extraTiers = (note: string | null) =>
-	note ? Math.max(0, note.split('|').filter((t) => t.trim()).length - 1) : 0;
-
 function stateOf(confirmed: boolean, startTime: string | null, register: Register | null): RowState {
 	if (!confirmed) return 'lead';
 	return startTime && register ? 'publishable' : 'needs-time';
 }
 
-function missingOf(startTime: string | null, priceGate: number | null, register: Register | null) {
-	return [!startTime && 'time', priceGate == null && 'cover', !register && 'register'].filter(
+// No price rows at all is "cover" missing — never free: free is a row at 0.
+function missingOf(startTime: string | null, prices: PriceRow[], register: Register | null) {
+	return [!startTime && 'time', !prices.length && 'cover', !register && 'register'].filter(
 		(x): x is string => Boolean(x)
 	);
 }
@@ -188,7 +185,10 @@ export function buildWeek(
 			if (o.status === 'CANCELLED') continue;
 			const startTime = o.startTime ?? r.startTime;
 			const register = o.register ?? r.register;
-			const priceGate = o.priceGate ?? r.priceGate;
+			// Prices are the night's price, not an offer: an override's own replace the rule's.
+			const prices = o.prices.length ? o.prices : r.prices;
+			const price = priceLabel(prices, date);
+			const usual = priceLabel(r.prices, date).entry;
 			rows.push({
 				key: o.id,
 				residencyId: r.id,
@@ -198,9 +198,9 @@ export function buildWeek(
 				venue: o.venue,
 				category: o.category,
 				startTime,
-				priceGate,
-				usualPrice: priceGate !== r.priceGate ? r.priceGate : null,
-				extraTiers: extraTiers(o.priceNote),
+				prices,
+				price,
+				usualPrice: usual !== price.entry ? usual : null,
 				register,
 				lineup: o.lineup.length ? o.lineup : r.lineup,
 				billing: null,
@@ -215,7 +215,7 @@ export function buildWeek(
 					o.status === 'CHANGED'
 						? 'changed'
 						: stateOf(o.status === 'CONFIRMED', startTime, register),
-				missing: missingOf(startTime, priceGate, register)
+				missing: missingOf(startTime, prices, register)
 			});
 			continue;
 		}
@@ -230,9 +230,9 @@ export function buildWeek(
 			venue: r.venue,
 			category: r.category,
 			startTime: r.startTime,
-			priceGate: r.priceGate,
+			prices: r.prices,
+			price: priceLabel(r.prices, date),
 			usualPrice: null,
-			extraTiers: 0,
 			register: r.register,
 			lineup: r.lineup,
 			billing: null,
@@ -244,7 +244,7 @@ export function buildWeek(
 			attendedBy: r.attendedBy,
 			clearsF2: r.clearsF2,
 			state: stateOf(confirmed, r.startTime, r.register),
-			missing: missingOf(r.startTime, r.priceGate, r.register)
+			missing: missingOf(r.startTime, r.prices, r.register)
 		});
 	}
 
@@ -260,9 +260,9 @@ export function buildWeek(
 			venue: o.venue,
 			category: o.category,
 			startTime: o.startTime,
-			priceGate: o.priceGate,
+			prices: o.prices,
+			price: priceLabel(o.prices, o.date),
 			usualPrice: null,
-			extraTiers: extraTiers(o.priceNote),
 			register: o.register,
 			lineup: o.lineup,
 			billing: null,
@@ -274,7 +274,7 @@ export function buildWeek(
 			attendedBy: o.attendedBy,
 			clearsF2: o.clearsF2,
 			state: o.status === 'CHANGED' ? 'changed' : stateOf(o.status === 'CONFIRMED', o.startTime, o.register),
-			missing: missingOf(o.startTime, o.priceGate, o.register)
+			missing: missingOf(o.startTime, o.prices, o.register)
 		});
 	}
 
@@ -408,13 +408,7 @@ export function dayHeading(date: string) {
 }
 
 /** 10000 → "10K", 1500000 → "1.5M", 0 → "Free". */
-export function shillings(n: number | null) {
-	if (n == null) return '—';
-	if (n === 0) return 'Free';
-	if (n >= 1_000_000) return `${+(n / 1_000_000).toFixed(1)}M`;
-	if (n >= 1_000) return `${+(n / 1_000).toFixed(1)}K`;
-	return String(n);
-}
+export { shillings } from '../price.js'; // the one money formatter, beside the floor
 
 export const maskPhone = (phone: string | null) =>
 	phone ? `${phone.replace(/\s+/g, '').slice(0, 4)} ···` : 'no number';

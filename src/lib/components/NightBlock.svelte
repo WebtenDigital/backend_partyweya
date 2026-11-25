@@ -6,6 +6,7 @@
 	// offers as n_perk_* rows with a per-block count, sliced back the same way.
 	import { DAYS } from '#lib/build/add.js';
 	import PerksEditor from './PerksEditor.svelte';
+	import PricesEditor from './PricesEditor.svelte';
 
 	let {
 		categories,
@@ -70,14 +71,17 @@
 	</label>
 </div>
 <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-	<label class="field"><span>Gate price</span><input name="n_gate" class="input h-11 font-mono" inputmode="numeric" placeholder="0 = free" /></label>
-	<label class="field"><span>Advance price</span><input name="n_advance" class="input h-11 font-mono" inputmode="numeric" placeholder="—" /></label>
 	{#if standing}
 		<label class="field col-span-2"><span>Running since</span><input name="n_since" type="month" class="input h-11" /></label>
 	{:else}
 		<input type="hidden" name="n_since" value="" />
 	{/if}
 	<label class="field col-span-2 sm:col-span-4"><span>Lineup</span><input name="n_lineup" class="input h-11" placeholder="The Clan Band, DJ Smallz" /></label>
+</div>
+<div class="space-y-2">
+	<!-- "What's entry?" — and, for a one-off, whether advance differs. Standing nights don't carry advance prices. -->
+	<p class="text-sm">“What’s entry?”{#if !standing} — “Is it different in advance?”{/if}</p>
+	<PricesEditor prefix="n_price" {today} timing={!standing} />
 </div>
 <div class="space-y-2">
 	<p class="text-sm">“And is there anything that comes with it — drinks deals, food, free entry before a certain time?”</p>
