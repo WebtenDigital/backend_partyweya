@@ -118,6 +118,7 @@
 			<a href="/build?week={addDays(data.week, -7)}" class="btn">← Previous week</a>
 			<a href="/build?week={addDays(data.week, 7)}" class="btn">Next week →</a>
 			<ThisWeek href="/calls?week={data.week}" />
+			<a href="/build/categories?week={data.week}" class="btn">Categories</a>
 			<a href="/venues" class="btn">Venues</a>
 			<a href="/acts" class="btn">Acts</a>
 			<Visits />

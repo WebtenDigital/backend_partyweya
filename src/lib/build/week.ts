@@ -58,6 +58,7 @@ export interface ResidencyIn {
 	category: string;
 	dayOfWeek: number; // 1 = Monday … 7 = Sunday
 	startTime: string | null;
+	endTime?: string | null;
 	prices: PriceRow[];
 	register: Register;
 	recurrence: string;
@@ -79,6 +80,7 @@ export interface OccurrenceIn {
 	eventName: string;
 	category: string;
 	startTime: string | null;
+	endTime?: string | null;
 	prices: PriceRow[]; // empty on an override = the standing night's
 	register: Register | null;
 	claimType: string | null;
@@ -103,6 +105,7 @@ export interface Row {
 	venue: VenueIn;
 	category: string;
 	startTime: string | null;
+	endTime: string | null; //   derived like startTime: an override's own, else the standing night's
 	prices: PriceRow[]; //       the night's rows: an override's own, else the standing night's
 	price: PriceLabel; //        as published ON THIS ROW'S DATE (lib/price.ts) — never stored
 	usualPrice: string | null; // the standing night's figure, when an override's differs
@@ -184,6 +187,7 @@ export function buildWeek(
 		if (o) {
 			if (o.status === 'CANCELLED') continue;
 			const startTime = o.startTime ?? r.startTime;
+			const endTime = o.endTime ?? r.endTime ?? null;
 			const register = o.register ?? r.register;
 			// Prices are the night's price, not an offer: an override's own replace the rule's.
 			const prices = o.prices.length ? o.prices : r.prices;
@@ -198,6 +202,7 @@ export function buildWeek(
 				venue: o.venue,
 				category: o.category,
 				startTime,
+				endTime,
 				prices,
 				price,
 				usualPrice: usual !== price.entry ? usual : null,
@@ -230,6 +235,7 @@ export function buildWeek(
 			venue: r.venue,
 			category: r.category,
 			startTime: r.startTime,
+			endTime: r.endTime ?? null,
 			prices: r.prices,
 			price: priceLabel(r.prices, date),
 			usualPrice: null,
@@ -260,6 +266,7 @@ export function buildWeek(
 			venue: o.venue,
 			category: o.category,
 			startTime: o.startTime,
+			endTime: o.endTime ?? null,
 			prices: o.prices,
 			price: priceLabel(o.prices, o.date),
 			usualPrice: null,

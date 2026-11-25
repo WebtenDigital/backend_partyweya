@@ -51,8 +51,12 @@ const venueIn = (v: VenueRow): VenueIn => ({
 	division: v.zone?.division ?? null
 });
 
-/** One Mon–Sun week: the active residencies it was built from, its rows and its gate. */
-export async function loadWeek(week: string, db: Tx = prisma) {
+/**
+ * One Mon–Sun week: the active residencies it was built from, its rows and its
+ * gate. `standingOnly` expands the standing nights alone — the durable rule,
+ * with no one-offs and no overrides — through the same buildWeek.
+ */
+export async function loadWeek(week: string, db: Tx = prisma, { standingOnly = false } = {}) {
 	const weekEnd = addDays(week, 6);
 	const [residencies, occurrences] = await Promise.all([
 		db.residency.findMany({
@@ -60,7 +64,7 @@ export async function loadWeek(week: string, db: Tx = prisma) {
 			include: { venue: { include: { zone: true } }, perks: true, prices: { orderBy: PRICE_ORDER } }
 		}),
 		db.occurrence.findMany({
-			where: { date: { gte: asDate(week), lte: asDate(weekEnd) } },
+			where: standingOnly ? { id: { in: [] } } : { date: { gte: asDate(week), lte: asDate(weekEnd) } },
 			include: { venue: { include: { zone: true } }, perks: true, prices: { orderBy: PRICE_ORDER } }
 		})
 	]);
@@ -75,6 +79,7 @@ export async function loadWeek(week: string, db: Tx = prisma) {
 				category: r.category,
 				dayOfWeek: r.dayOfWeek,
 				startTime: r.startTime,
+				endTime: r.endTime,
 				prices: r.prices.map(priceRow),
 				register: r.register as Register,
 				recurrence: r.recurrence,
@@ -97,6 +102,7 @@ export async function loadWeek(week: string, db: Tx = prisma) {
 				eventName: o.eventName,
 				category: o.category,
 				startTime: o.startTime,
+				endTime: o.endTime,
 				prices: o.prices.map(priceRow),
 				register: o.register as Register | null,
 				claimType: o.claimType,
