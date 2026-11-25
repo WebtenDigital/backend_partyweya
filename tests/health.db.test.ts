@@ -6,6 +6,7 @@ import { createPrisma } from '../src/lib/server/db.ts';
 import { addDays, kampalaToday } from '../src/lib/build/week.ts';
 import { registerHealth } from '../src/lib/server/tier.ts';
 import { kampalaDate } from '../src/lib/server/register.ts';
+import { periodOf } from '../src/lib/build/recurrence.ts';
 
 const db = createPrisma(process.env.DIRECT_URL ?? process.env.DATABASE_URL!);
 after(() => db.$disconnect());
@@ -14,12 +15,12 @@ test('register health counts match a direct query of the register', async () => 
 	const today = kampalaToday();
 	const book = await db.residency.findMany({
 		where: { active: true },
-		select: { eventName: true, startTime: true, register: true, lastConfirmed: true, runningSince: true, firstConfirmedAt: true, rotatingAct: true, venue: { select: { name: true } } }
+		select: { eventName: true, startTime: true, register: true, lastConfirmed: true, runningSince: true, firstConfirmedAt: true, rotatingAct: true, recurrence: true, venue: { select: { name: true } } }
 	});
 	const h = registerHealth(
 		book.map((n) => ({
 			kind: 'standing' as const, venue: n.venue.name, eventName: n.eventName, startTime: n.startTime, register: n.register,
-			lastConfirmed: kampalaDate(n.lastConfirmed), runningSince: kampalaDate(n.runningSince), firstConfirmedAt: kampalaDate(n.firstConfirmedAt), rotating: n.rotatingAct
+			lastConfirmed: kampalaDate(n.lastConfirmed), runningSince: kampalaDate(n.runningSince), firstConfirmedAt: kampalaDate(n.firstConfirmedAt), rotating: n.rotatingAct, period: periodOf(n.recurrence)
 		})),
 		today
 	);

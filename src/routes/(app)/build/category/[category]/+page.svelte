@@ -56,6 +56,7 @@
 		<section class="panel grid gap-2 text-sm sm:grid-cols-3">
 			<p class={L.noStart ? 'text-energy' : 'text-vetted'}>{L.noStart ? `✗ ${L.noStart} without a start time — held out` : '✓ every entry has a start time'}</p>
 			<p class={L.unconfirmed ? 'text-energy' : 'text-vetted'}>{L.unconfirmed ? `✗ ${L.unconfirmed} unconfirmed — held out` : '✓ nothing unconfirmed listed'}</p>
+			{#if L.unplaced}<p class="text-energy sm:col-span-3">✗ {L.unplaced} whose repeat can’t be placed this week — held out, not dropped</p>{/if}
 			<p class="text-dim">{L.entries} listed · {L.paid} paid {L.paid === 1 ? 'entry' : 'entries'} on this page</p>
 		</section>
 

@@ -38,7 +38,12 @@ export type Mode = 'week' | 'standing';
 
 /** Why a row is held out of the listing. A row without a start time is not a row; an unconfirmed one is not a fact. */
 export function heldBecause(r: Row): string[] {
-	return [!r.startTime && 'no start time', r.state === 'lead' && 'unconfirmed', r.state === 'changed' && 'changed — re-verify'].filter(
+	return [
+		r.state === 'held' && r.missing[0], // a rule that can't be placed this week: its reason, first
+		!r.startTime && 'no start time',
+		r.state === 'lead' && 'unconfirmed',
+		r.state === 'changed' && 'changed — re-verify'
+	].filter(
 		(x): x is string => !!x
 	);
 }
@@ -56,6 +61,7 @@ export interface Listing {
 	held: number;
 	noStart: number;
 	unconfirmed: number;
+	unplaced: number; // a rule this week can't be placed from (no anchor, no monthly pattern)
 	paid: number; // entries whose venue is a paid client — counted, never reordered
 }
 
@@ -81,7 +87,8 @@ export function listing(rows: Row[], category: string, week: string, mode: Mode)
 		entries: entries.length,
 		held: held.length,
 		noStart: held.filter((h) => !h.row.startTime).length,
-		unconfirmed: held.filter((h) => h.why.some((w) => w !== 'no start time')).length,
+		unconfirmed: held.filter((h) => h.row.state === 'lead' || h.row.state === 'changed').length,
+		unplaced: held.filter((h) => h.row.state === 'held').length,
 		paid: entries.filter((r) => r.venue.paidClient).length
 	};
 }

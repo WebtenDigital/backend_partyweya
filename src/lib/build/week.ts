@@ -5,6 +5,7 @@
 import { vouchDay, vouchExpires, vouchExpiry, vouchState } from './vouch.js';
 import { priceLabel, type PriceLabel, type PriceRow } from '../price.js';
 import { freshOn } from '../tier.js';
+import { periodOf, placeOn } from './recurrence.js';
 
 export type Register = 'CHILL' | 'SOCIAL' | 'HIGH_ENERGY';
 export const REGISTERS: Register[] = ['CHILL', 'SOCIAL', 'HIGH_ENERGY'];
@@ -62,7 +63,9 @@ export interface ResidencyIn {
 	endTime?: string | null;
 	prices: PriceRow[];
 	register: Register;
-	recurrence: string;
+	recurrence: string; //            WEEKLY | FORTNIGHTLY | MONTHLY (| SEASONAL, which can't be placed)
+	anchorDate?: string | null; //    fortnightly: a date it actually ran
+	monthlyOrdinal?: string | null; // monthly: FIRST … FOURTH, LAST
 	claimType: string | null;
 	source: string | null;
 	lastConfirmed: string | null; // YYYY-MM-DD
@@ -98,7 +101,9 @@ export interface OccurrenceIn {
 	perks: PerkIn[];
 }
 
-export type RowState = 'publishable' | 'needs-time' | 'lead' | 'changed';
+// 'held': a standing rule that can't be placed this week (no anchor, no monthly
+// pattern) — unpublishable with its reason in `missing`, never silently dropped.
+export type RowState = 'publishable' | 'needs-time' | 'lead' | 'changed' | 'held';
 
 export interface Row {
 	key: string;
@@ -185,8 +190,10 @@ export function buildWeek(
 
 	// Standing nights, unless an occurrence overrides that date.
 	for (const r of residencies) {
-		if (r.recurrence !== 'WEEKLY') continue; // monthly/seasonal can't be placed from a weekday alone
 		const date = addDays(weekStart, r.dayOfWeek - 1);
+		// Fortnightly off-weeks and the month's other Fridays simply aren't this rule's nights.
+		const place = placeOn(r, date);
+		if ('on' in place && !place.on) continue;
 		const o = overrides.get(`${r.id}|${date}`);
 		if (o) {
 			if (o.status === 'CANCELLED') continue;
@@ -228,8 +235,13 @@ export function buildWeek(
 			});
 			continue;
 		}
-		const confirmed =
-			freshOn({ kind: 'standing', lastConfirmed: r.lastConfirmed, runningSince: r.runningSince ?? null, firstConfirmedAt: r.firstConfirmedAt, rotating: r.rotatingAct }, weekStart);
+		// A confirmation holds for max(its tier's window, the rule's period): a fortnightly night
+		// called 12 days ago has run once since — not stale.
+		const confirmed = freshOn(
+			{ kind: 'standing', lastConfirmed: r.lastConfirmed, runningSince: r.runningSince ?? null, firstConfirmedAt: r.firstConfirmedAt, rotating: r.rotatingAct, period: periodOf(r.recurrence) },
+			weekStart
+		);
+		const held = 'held' in place ? place.held : null;
 		rows.push({
 			key: `${r.id}|${date}`,
 			residencyId: r.id,
@@ -253,8 +265,8 @@ export function buildWeek(
 			attendedAt: r.attendedAt,
 			attendedBy: r.attendedBy,
 			clearsF2: r.clearsF2,
-			state: stateOf(confirmed, r.startTime, r.register),
-			missing: missingOf(r.startTime, r.prices, r.register)
+			state: held ? 'held' : stateOf(confirmed, r.startTime, r.register),
+			missing: [...(held ? [held] : []), ...missingOf(r.startTime, r.prices, r.register)]
 		});
 	}
 

@@ -4,10 +4,15 @@
 
 import { addDays } from './week.js';
 
-export type Repeat = 'weekly' | 'once' | 'override' | 'cancelled';
+export type Repeat = 'weekly' | 'fortnightly' | 'monthly' | 'once' | 'override' | 'cancelled';
 
-export const REPEATS: { key: Repeat; label: (day: string) => string; writes: string }[] = [
+/** The answers that write a standing night (a Residency) rather than a dated row. */
+export const STANDING_REPEATS: Repeat[] = ['weekly', 'fortnightly', 'monthly'];
+
+export const REPEATS: { key: Repeat; label: (day: string, ordinal?: string) => string; writes: string }[] = [
 	{ key: 'weekly', label: (d) => `It’s every ${d}`, writes: 'RESIDENCY' },
+	{ key: 'fortnightly', label: (d) => `Every other ${d}`, writes: 'RESIDENCY · FORTNIGHTLY' },
+	{ key: 'monthly', label: (d, o) => `The ${(o || 'last').toLowerCase()} ${d} of the month`, writes: 'RESIDENCY · MONTHLY' },
 	{ key: 'once', label: () => 'Just this once', writes: 'OCCURRENCE' },
 	{ key: 'override', label: (d) => `Instead of the usual ${d}`, writes: 'OCCURRENCE · OVERRIDE' },
 	{ key: 'cancelled', label: () => 'It’s off this week', writes: 'OCCURRENCE · CANCELLED' }

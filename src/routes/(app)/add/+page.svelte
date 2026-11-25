@@ -3,7 +3,8 @@
 	import ThisWeek from '#lib/components/ThisWeek.svelte';
 	import { enhance } from '$app/forms';
 	import { goto } from '$app/navigation';
-	import { DAYS, PROVENANCE, REPEATS, isoDay, nextOn, type Provenance, type Repeat } from '#lib/build/add.js';
+	import { DAYS, PROVENANCE, REPEATS, STANDING_REPEATS, isoDay, nextOn, type Provenance, type Repeat } from '#lib/build/add.js';
+	import { ORDINALS } from '#lib/build/recurrence.js';
 	import { dayHeading, shillings } from '#lib/build/week.js';
 	import PerksEditor, { type PerkRow } from '#lib/components/PerksEditor.svelte';
 	import LineupInput from '#lib/components/LineupInput.svelte';
@@ -36,6 +37,9 @@
 	let date = $state('');
 	let residencyId = $state('');
 	let runningSince = $state('');
+	// The rule's period, for a night that isn't every week: a date it ran, or which one of the month.
+	let anchorDate = $state('');
+	let ordinal = $state('');
 	// 4 · when and cost
 	let start = $state('');
 	let end = $state('');
@@ -65,7 +69,18 @@
 	);
 	const replaces = $derived(nights.find((r) => r.id === residencyId));
 	const prov = $derived(PROVENANCE.find((p) => p.key === provenance));
-	const weekly = $derived(repeat === 'weekly');
+	// Any standing night — weekly, fortnightly or monthly — writes a rule, not a dated row.
+	const weekly = $derived(!!repeat && STANDING_REPEATS.includes(repeat));
+	// What a rule that isn't every week still needs before it can be placed — the save bar says so.
+	const ruleMissing = $derived(
+		repeat === 'fortnightly' && !anchorDate
+			? 'a date it actually ran'
+			: repeat === 'fortnightly' && day && isoDay(anchorDate) !== Number(day)
+				? `a ${DAYS[Number(day)]} it actually ran`
+				: repeat === 'monthly' && !ordinal
+					? 'which one of the month'
+					: null
+	);
 	const updating = $derived(weekly && existing && duplicate === 'existing');
 
 	// The day the options talk about: the rule's own, or the one being replaced.
@@ -105,6 +120,7 @@
 	const landsOn = $derived(weekly ? (dayNumber ? nextOn(data.today, dayNumber) : '') : date);
 	const outcome = $derived.by(() => {
 		if (repeat === 'cancelled') return { text: 'cancelled — the standing night drops out that week', tone: 'text-dim' };
+		if (ruleMissing) return { text: `can’t save — needs ${ruleMissing}`, tone: 'text-energy' };
 		if (!prov) return { text: 'source not given', tone: 'text-dim' };
 		if (!prov.confirms) return { text: 'lead — needs a call', tone: 'text-dim' };
 		if (!start || !register) return { text: `needs ${!start ? 'a time' : 'a register'}`, tone: 'text-social' };
@@ -128,6 +144,9 @@
 					['id', updating ? existing!.id : `${v}-${slug(eventName) || '…'}`],
 					['venueId', v],
 					['dayOfWeek', day || '—'],
+					['recurrence', ({ weekly: 'WEEKLY', fortnightly: 'FORTNIGHTLY', monthly: 'MONTHLY' } as Record<string, string>)[repeat] ?? 'WEEKLY'],
+					...(repeat === 'fortnightly' ? [['anchorDate', ...c(anchorDate)] as [string, string, string]] : []),
+					...(repeat === 'monthly' ? [['monthlyOrdinal', ...c(ordinal)] as [string, string, string]] : []),
 					['startTime', ...c(start, 'text-vetted')],
 					['prices', 'as entered — none keeps the night’s'],
 					['register', ...c(register, REGISTER_TONE[register])],
@@ -164,7 +183,7 @@
 
 	const summary = $derived(
 		[
-			{ weekly: 'a standing night', once: 'a one-off', override: 'an override', cancelled: 'a cancellation', '': 'an entry' }[repeat],
+			{ weekly: 'a standing night', fortnightly: 'a fortnightly night', monthly: 'a monthly night', once: 'a one-off', override: 'an override', cancelled: 'a cancellation', '': 'an entry' }[repeat],
 			claim ?? 'no claim',
 			prov ? (prov.confirms ? `confirmed by ${data.caller}` : 'stays a lead') : 'source not given'
 		].join(', ')
@@ -304,7 +323,7 @@
 								{repeat === r.key ? 'border-chill bg-chill/10' : 'border-line hover:border-dim'}"
 							onclick={() => (repeat = r.key)}
 						>
-							<span>{r.label(r.key === 'weekly' ? DAYS[Number(day)] || 'week' : DAYS[replaces?.dayOfWeek ?? existing?.dayOfWeek ?? 0] || 'night')}</span>
+							<span>{r.label(STANDING_REPEATS.includes(r.key) ? DAYS[Number(day)] || (r.key === 'weekly' ? 'week' : 'Friday') : DAYS[replaces?.dayOfWeek ?? existing?.dayOfWeek ?? 0] || 'night', ordinal)}</span>
 							<span class="font-mono text-[10px] tracking-wider {repeat === r.key ? 'text-chill' : 'text-dim'}">{r.writes}</span>
 						</button>
 					{/each}
@@ -322,6 +341,26 @@
 							<input name="runningSince" type="month" class="input" bind:value={runningSince} max={data.today.slice(0, 7)} />
 						</label>
 					</div>
+					{#if repeat === 'fortnightly'}
+						<!-- Every other week from WHEN: without a real date the rule is a coin flip that looks normal on the weeks it's wrong. -->
+						<label class="field"><span>A date it actually ran <span class="text-energy">*</span></span>
+							<input name="anchorDate" type="date" class="input w-48" bind:value={anchorDate} max={data.today} />
+							{#if anchorDate && day && isoDay(anchorDate) !== Number(day)}<span class="text-energy">That’s a {DAYS[isoDay(anchorDate)]} — it runs on {DAYS[Number(day)]}s.</span>{/if}
+						</label>
+					{:else if repeat === 'monthly'}
+						<input type="hidden" name="monthlyOrdinal" value={ordinal} />
+						<div class="field">
+							<span>Which one of the month <span class="text-energy">*</span></span>
+							<div class="flex flex-wrap gap-2">
+								{#each ORDINALS as o (o)}
+									<button type="button" class="h-11 rounded-md border px-3 text-sm {ordinal === o ? 'border-chill bg-chill/10' : 'border-line hover:border-dim'}" aria-pressed={ordinal === o} onclick={() => (ordinal = o)}>{o.toLowerCase()}</button>
+								{/each}
+							</div>
+							<span class="text-dim">
+								If it moves around the month rather than landing on the same {DAYS[Number(day)] || 'Friday'}, it is not a rule. Use “Just this once” and add each date as it comes.
+							</span>
+						</div>
+					{/if}
 				{:else if repeat}
 					<div class="grid gap-3 sm:grid-cols-2">
 						{#if repeat === 'override' || repeat === 'cancelled'}
@@ -517,7 +556,8 @@
 		<div class="flex flex-wrap items-center gap-3">
 			<p class="text-sm text-dim">Saving as <strong class="text-fg">{summary}</strong></p>
 			<a href="/build" class="btn ml-auto">Cancel</a>
-			<button class="btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save and open the week'}</button>
+			{#if ruleMissing}<span class="text-sm text-energy">Needs {ruleMissing}</span>{/if}
+			<button class="btn-primary" disabled={saving || !!ruleMissing}>{saving ? 'Saving…' : 'Save and open the week'}</button>
 		</div>
 	</footer>
 </form>

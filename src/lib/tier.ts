@@ -28,6 +28,7 @@ export type Night =
 			runningSince: string | null; //     the venue's claim; null = not asked
 			firstConfirmedAt?: string | null; // our first confirmation; set once
 			rotating?: boolean; //             a different act every week: B at best
+			period?: number; //                days between its nights: 7, 14 fortnightly, 35 monthly
 	  }
 	| {
 			kind: 'one-off';
@@ -45,6 +46,10 @@ export const DUE_AFTER: Record<'A' | 'B', number> = { A: 30, B: 7 };
  * C has no window: never confirmed, it isn't publishable at any age. (One-offs
  * are confirmed or not; elapsed time doesn't enter.) Each is due a call before
  * it goes stale: DUE_AFTER < FRESH_DAYS.
+ *
+ * And never shorter than the night's own period: max(tier window, period). Tier
+ * is volatility, period is frequency — a monthly tier B night holds 35 days, or
+ * it could never publish at all.
  */
 export const FRESH_DAYS: Record<'A' | 'B', number> = { A: 45, B: 10 };
 
@@ -138,7 +143,7 @@ type Standing = Extract<Night, { kind: 'standing' }>;
 export function freshOn(night: Standing, asOf: string): boolean {
 	const tier = tierForNight(night, asOf);
 	if (tier === 'C' || tier === 'DONE' || !night.lastConfirmed) return false;
-	return daysBetween(night.lastConfirmed, asOf) <= FRESH_DAYS[tier];
+	return daysBetween(night.lastConfirmed, asOf) <= windowFor(tier, night);
 }
 
 /**
@@ -154,9 +159,11 @@ export function tierBasis(night: Standing, asOf: string): 'record' | 'word' {
 	return night.firstConfirmedAt != null && night.firstConfirmedAt <= since ? 'record' : 'word';
 }
 
+const windowFor = (tier: 'A' | 'B', night: Standing) => Math.max(FRESH_DAYS[tier], night.period ?? 7);
+
 /** The window a night will be held to once confirmed — C is confirmed into B at best. */
 const windowOf = (night: Standing, asOf: string) =>
-	tierForNight({ ...night, lastConfirmed: night.lastConfirmed ?? asOf }, asOf) === 'A' ? FRESH_DAYS.A : FRESH_DAYS.B;
+	windowFor(tierForNight({ ...night, lastConfirmed: night.lastConfirmed ?? asOf }, asOf) === 'A' ? 'A' : 'B', night);
 
 export interface HealthNight extends Standing {
 	venue: string;
@@ -195,7 +202,8 @@ export function registerHealth(nights: HealthNight[], today: string): RegisterHe
 		publishable,
 		never: nights.length - confirmed.length,
 		thisWeek: confirmed.filter((n) => n.lastConfirmed! >= monday && n.lastConfirmed! <= today).length,
-		needed: Math.ceil(nights.reduce((sum, n) => sum + 7 / windowOf(n, today), 0)),
+		// Rounded before the ceiling: ten nights at 7/10 sum to 7.000000000000001, which is 7, not 8.
+		needed: Math.ceil(Number(nights.reduce((sum, n) => sum + 7 / windowOf(n, today), 0).toFixed(6))),
 		last30: confirmed.filter((n) => n.lastConfirmed! > addDays(today, -30)).length,
 		oldestLapsed: lapsed[0] ? { venue: lapsed[0].venue, eventName: lapsed[0].eventName, lastConfirmed: lapsed[0].lastConfirmed! } : null,
 		heldOnRecord: live.filter((n) => tierBasis(n, today) === 'record').length,

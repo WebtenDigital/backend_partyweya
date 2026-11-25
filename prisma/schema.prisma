@@ -97,8 +97,19 @@ enum ContactRole {
 
 enum Recurrence {
   WEEKLY
-  MONTHLY
-  SEASONAL
+  FORTNIGHTLY // needs anchorDate — "every other Friday" from when?
+  MONTHLY //     needs monthlyOrdinal — "the last Friday of the month"
+  SEASONAL //    can't be placed from a rule; held out by the week, never listed
+}
+
+// Which of the month's weekdays a MONTHLY night falls on. FOURTH and LAST
+// differ in a month with five of that weekday — both are kept.
+enum MonthlyOrdinal {
+  FIRST
+  SECOND
+  THIRD
+  FOURTH
+  LAST
 }
 
 enum ActRole {
@@ -326,6 +337,8 @@ model Residency {
   //                      from the category. Making it required forces the call.
 
   recurrence    Recurrence @default(WEEKLY)
+  anchorDate     DateTime?       @db.Date // FORTNIGHTLY: any date it actually ran; its week's parity decides
+  monthlyOrdinal MonthlyOrdinal? //         MONTHLY: with dayOfWeek, "the last Friday"
   runningSince  DateTime? //  the durability signal: a year beats a month
   active        Boolean    @default(true)
   stoppedReason String? //   why it was deactivated — asked for on Deactivate

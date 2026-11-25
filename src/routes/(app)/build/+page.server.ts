@@ -10,6 +10,7 @@ import { derivedCadence, loadDiscovery, nightCoverage } from '#lib/server/queue.
 import { changeVisit, dismissVisit, planVisit, visitsDue, weekVisit } from '#lib/server/visits.js';
 import { failureMessage, oneOf, text } from '#lib/server/forms.js';
 import { registerHealth } from '#lib/server/tier.js';
+import { periodOf } from '#lib/build/recurrence.js';
 import { kampalaDate } from '#lib/server/register.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -61,7 +62,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	// Register health: counted from every active standing night, as of today — not this build's week.
 	const book = await prisma.residency.findMany({
 		where: { active: true },
-		select: { eventName: true, startTime: true, register: true, lastConfirmed: true, runningSince: true, firstConfirmedAt: true, rotatingAct: true, venue: { select: { name: true } } }
+		select: { eventName: true, startTime: true, register: true, lastConfirmed: true, runningSince: true, firstConfirmedAt: true, rotatingAct: true, recurrence: true, venue: { select: { name: true } } }
 	});
 	const health = registerHealth(
 		book.map((n) => ({
@@ -73,7 +74,8 @@ export const load: PageServerLoad = async ({ url }) => {
 			lastConfirmed: kampalaDate(n.lastConfirmed),
 			runningSince: kampalaDate(n.runningSince),
 			firstConfirmedAt: kampalaDate(n.firstConfirmedAt),
-			rotating: n.rotatingAct
+			rotating: n.rotatingAct,
+			period: periodOf(n.recurrence) // a fortnightly night costs half the calls a weekly one does
 		})),
 		today
 	);

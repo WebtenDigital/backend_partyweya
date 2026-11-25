@@ -1,6 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { CALLER_NAME } from '$app/env/private';
-import { prisma, Category, Register } from '#lib/server/prisma.js';
+import { prisma, Category, MonthlyOrdinal, Register } from '#lib/server/prisma.js';
 import { addPerks } from '#lib/server/perks.js';
 import { parsePrices, savePrices } from '#lib/server/price.js';
 import { lineupFrom, lineupSuggestions, newActsParam, unclassified } from '#lib/server/acts.js';
@@ -11,8 +11,9 @@ import { billedLineup, lineupTransfers, ruleBills } from '#lib/server/provenance
 import { createVenue } from '#lib/server/venues.js';
 import type { Source } from '#lib/server/prisma.js';
 import { asDate, kampalaDate } from '#lib/server/register.js';
-import { PROVENANCE, REPEATS, isoDay, mondayOf, nextOn, type Repeat } from '#lib/build/add.js';
-import { kampalaToday } from '#lib/build/week.js';
+import { placeOn } from '#lib/build/recurrence.js';
+import { DAYS, PROVENANCE, REPEATS, STANDING_REPEATS, isoDay, mondayOf, nextOn, type Repeat } from '#lib/build/add.js';
+import { addDays, kampalaToday } from '#lib/build/week.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url }) => {
@@ -125,7 +126,7 @@ export const actions: Actions = {
 				};
 
 				// 3 · the answer to "does it repeat?" picks the table.
-				if (repeat === 'weekly') {
+				if (STANDING_REPEATS.includes(repeat)) {
 					const eventName = text(f, 'eventName');
 					const category = oneOf(Category, text(f, 'category'), 'category');
 					const day = Number(text(f, 'day'));
@@ -136,11 +137,22 @@ export const actions: Actions = {
 						throw new Invalid('A standing night needs a register — your best guess, until question 6 makes it a fact.');
 					const running = text(f, 'runningSince');
 					if (running && !/^\d{4}-\d{2}$/.test(running)) throw new Invalid('How long it’s been running: a month, like 2025-03.');
+					// A rule that can't be placed is not saved: every other week from WHEN, which Friday of the month.
+					const anchor = repeat === 'fortnightly' ? text(f, 'anchorDate') : null;
+					if (repeat === 'fortnightly') {
+						if (!anchor || !/^\d{4}-\d{2}-\d{2}$/.test(anchor)) throw new Invalid('Every other week from when? Give a date it actually ran.');
+						if (isoDay(anchor) !== day) throw new Invalid(`That date is a ${DAYS[isoDay(anchor)]} — give a ${DAYS[day]} it actually ran.`);
+					}
+					const ordinal = repeat === 'monthly' ? oneOf(MonthlyOrdinal, text(f, 'monthlyOrdinal'), 'which week of the month') : null;
+					if (repeat === 'monthly' && !ordinal) throw new Invalid('Which one of the month — first, second, third, fourth or last?');
 
 					const data = {
 						eventName,
 						category,
 						dayOfWeek: day,
+						recurrence: ({ weekly: 'WEEKLY', fortnightly: 'FORTNIGHTLY', monthly: 'MONTHLY' } as const)[repeat as 'weekly' | 'fortnightly' | 'monthly'],
+						anchorDate: anchor ? asDate(anchor) : null,
+						monthlyOrdinal: ordinal,
 						startTime,
 						endTime,
 						register,
@@ -172,7 +184,10 @@ export const actions: Actions = {
 					await putPrices({ residencyId: id });
 					// Offers are added, never replaced — in the same transaction as the night.
 					await addPerks(tx, { residencyId: id }, f);
-					const date = nextOn(today, day);
+					// The next date the rule actually runs — an off-week of a fortnightly night isn't it.
+					let date = nextOn(today, day);
+					const rule = { recurrence: data.recurrence, anchorDate: anchor, monthlyOrdinal: ordinal };
+					for (let i = 0; i < 6 && 'on' in placeOn(rule, date) && !(placeOn(rule, date) as { on: boolean }).on; i++) date = addDays(date, 7);
 					return { week: mondayOf(date), highlight: `${id}|${date}` };
 				}
 

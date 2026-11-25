@@ -83,6 +83,8 @@ export async function loadWeek(week: string, db: Tx = prisma, { standingOnly = f
 				prices: r.prices.map(priceRow),
 				register: r.register as Register,
 				recurrence: r.recurrence,
+				anchorDate: r.anchorDate ? isoDate(r.anchorDate) : null,
+				monthlyOrdinal: r.monthlyOrdinal,
 				claimType: r.claimType,
 				source: r.source,
 				lastConfirmed: kampalaDate(r.lastConfirmed),

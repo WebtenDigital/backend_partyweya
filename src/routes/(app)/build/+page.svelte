@@ -87,6 +87,7 @@
 	}
 
 	function gapReason(r: Row) {
+		if (r.state === 'held') return `held out — ${r.missing.join(', ')}`;
 		if (r.state === 'needs-time') return 'confirmed, needs a time';
 		if (r.state === 'changed') return 'details moved — re-verify';
 		return r.missing.length ? `needs ${r.missing.join(' + ')}` : 'needs a call';
@@ -294,6 +295,8 @@
 								<div class="col-span-2 font-mono text-[11px] leading-snug md:col-span-1">
 									{#if r.state === 'lead'}
 										<p class="text-dim">LEAD</p>
+									{:else if r.state === 'held'}
+										<p class="text-energy" title={r.missing[0]}>HELD · {r.missing[0]}</p>
 									{:else if r.state === 'changed'}
 										<p class="text-social">CHANGED</p>
 									{:else}
