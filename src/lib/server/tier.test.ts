@@ -160,3 +160,17 @@ test('register health: the weekly need is derived from the book and moves when a
 	assert.equal(h.red, false); //   2 of 4 is half — red is under half
 	assert.equal(registerHealth([...book, n({ lastConfirmed: null })], asOf).red, true);
 });
+
+test('the tier’s footing: counts sum to the publishable, and our own 3 months moves a night from their word to our record', () => {
+	const n = (o: Partial<HealthNight>): HealthNight => ({ ...(aNight(20) as HealthNight), venue: 'V', eventName: 'N', startTime: '21:00', register: 'SOCIAL', ...o });
+	// A on their word: running for years, but our first confirmation is only weeks old.
+	const word = n({ firstConfirmedAt: addDays(asOf, -40) });
+	const book = [word, n({ ...(bNight(3) as object) }), n({ lastConfirmed: null })];
+	const h = registerHealth(book, asOf);
+	assert.equal(h.heldOnRecord + h.heldOnWord, h.publishable);
+	assert.deepEqual([h.publishable, h.heldOnRecord, h.heldOnWord], [2, 1, 1]);
+	// The same night, nothing else changed, once our own history reaches three months.
+	const ours = registerHealth([{ ...word, firstConfirmedAt: monthsBefore(asOf, 3) }, ...book.slice(1)], asOf);
+	assert.deepEqual([ours.publishable, ours.heldOnRecord, ours.heldOnWord], [2, 2, 0]);
+});
+

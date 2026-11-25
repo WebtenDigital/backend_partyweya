@@ -141,6 +141,19 @@ export function freshOn(night: Standing, asOf: string): boolean {
 	return daysBetween(night.lastConfirmed, asOf) <= FRESH_DAYS[tier];
 }
 
+/**
+ * What a night's tier rests on. Tier A needs the night HELD 3+ months: by our
+ * own first confirmation (our record), or only by the venue's "running since"
+ * (their word). A tier held on their word inherits that weaker footing, and the
+ * window it buys (45 days, not 10) decides what publishes — so it is counted.
+ * Anything not A rests on our confirmations alone.
+ */
+export function tierBasis(night: Standing, asOf: string): 'record' | 'word' {
+	if (tierForNight(night, asOf) !== 'A') return 'record';
+	const since = monthsBefore(asOf, HELD_MONTHS);
+	return night.firstConfirmedAt != null && night.firstConfirmedAt <= since ? 'record' : 'word';
+}
+
 /** The window a night will be held to once confirmed — C is confirmed into B at best. */
 const windowOf = (night: Standing, asOf: string) =>
 	tierForNight({ ...night, lastConfirmed: night.lastConfirmed ?? asOf }, asOf) === 'A' ? FRESH_DAYS.A : FRESH_DAYS.B;
@@ -160,6 +173,8 @@ export interface RegisterHealth {
 	needed: number; //        confirmations a week to keep the whole book fresh — derived, not set
 	last30: number;
 	oldestLapsed: { venue: string; eventName: string; lastConfirmed: string } | null;
+	heldOnRecord: number; //  of the publishable: tier resting on our own confirmations
+	heldOnWord: number; //    of the publishable: tier A only on the venue's "running since"
 	red: boolean; //          publishable under half the book
 }
 
@@ -173,7 +188,8 @@ export function registerHealth(nights: HealthNight[], today: string): RegisterHe
 	const monday = addDays(today, -((new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7));
 	const confirmed = nights.filter((n) => n.lastConfirmed);
 	const lapsed = confirmed.filter((n) => !freshOn(n, today)).sort((a, b) => a.lastConfirmed!.localeCompare(b.lastConfirmed!));
-	const publishable = nights.filter((n) => freshOn(n, today) && n.startTime && n.register).length;
+	const live = nights.filter((n) => freshOn(n, today) && n.startTime && n.register);
+	const publishable = live.length;
 	return {
 		total: nights.length,
 		publishable,
@@ -182,6 +198,8 @@ export function registerHealth(nights: HealthNight[], today: string): RegisterHe
 		needed: Math.ceil(nights.reduce((sum, n) => sum + 7 / windowOf(n, today), 0)),
 		last30: confirmed.filter((n) => n.lastConfirmed! > addDays(today, -30)).length,
 		oldestLapsed: lapsed[0] ? { venue: lapsed[0].venue, eventName: lapsed[0].eventName, lastConfirmed: lapsed[0].lastConfirmed! } : null,
+		heldOnRecord: live.filter((n) => tierBasis(n, today) === 'record').length,
+		heldOnWord: live.filter((n) => tierBasis(n, today) === 'word').length,
 		red: publishable < nights.length / 2
 	};
 }

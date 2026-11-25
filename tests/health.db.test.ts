@@ -32,5 +32,6 @@ test('register health counts match a direct query of the register', async () => 
 		FROM "Residency" WHERE active`;
 	assert.deepEqual([h.total, h.never, h.last30, h.thisWeek], [Number(total), Number(never), Number(last30), Number(week)]);
 	assert.ok(h.publishable <= h.total - h.never);
-	console.log(`# health ${today}: publishable ${h.publishable}/${h.total}, never ${h.never}, this week ${h.thisWeek}/${h.needed}, last 30 ${h.last30}, oldest lapsed ${JSON.stringify(h.oldestLapsed)}, red ${h.red}`);
+	assert.equal(h.heldOnRecord + h.heldOnWord, h.publishable);
+	console.log(`# health ${today}: publishable ${h.publishable}/${h.total}, never ${h.never}, this week ${h.thisWeek}/${h.needed}, last 30 ${h.last30}, oldest lapsed ${JSON.stringify(h.oldestLapsed)}, held on our record ${h.heldOnRecord}, on their word ${h.heldOnWord}, red ${h.red}`);
 });

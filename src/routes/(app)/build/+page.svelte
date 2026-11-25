@@ -151,6 +151,9 @@
 			<div><dt class="text-dim">Publishable now</dt><dd class={data.health.red ? 'text-energy' : ''}>{data.health.publishable} of {data.health.total} standing nights</dd></div>
 			<div><dt class="text-dim">Never confirmed</dt><dd class={data.health.never ? 'text-social' : ''}>{data.health.never}</dd></div>
 			<div><dt class="text-dim">Confirmed last 30 days</dt><dd>{data.health.last30}</dd></div>
+			<!-- Visible, not gating: a tier on the venue's word buys the 45-day window on the weakest footing. -->
+			<div><dt class="text-dim">Tier held on our own record</dt><dd>{data.health.heldOnRecord} of {data.health.publishable}</dd></div>
+			<div><dt class="text-dim">Tier held on the venue’s word</dt><dd class={data.health.heldOnWord ? 'text-social' : ''}>{data.health.heldOnWord} of {data.health.publishable}</dd></div>
 			<div><dt class="text-dim">Oldest lapsed</dt><dd>{data.health.oldestLapsed ? `${data.health.oldestLapsed.venue}, ${data.health.oldestLapsed.eventName} — ${shortDate(data.health.oldestLapsed.lastConfirmed)}` : 'none'}</dd></div>
 		</dl>
 	</section>
