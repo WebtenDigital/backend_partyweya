@@ -104,3 +104,59 @@ test('a rotating night is never A: held two years, it is still B — and C until
 	assert.equal(dueDateForNight(held, today), '2026-12-05');
 	assert.match(describeVenueTier([{ ...held, rotating: true }], today).text, /Tier B · weekly — .*a different act every week/);
 });
+
+// ── staleness by tier ────────────────────────────────────────────────────
+import { FRESH_DAYS, freshOn, registerHealth, type HealthNight } from './tier.ts';
+import { addDays } from '../build/week.ts';
+import { buildWeek, type ResidencyIn } from '../build/week.ts';
+
+const asOf = '2026-11-30';
+const bNight = (daysAgo: number): Night => ({ kind: 'standing', lastConfirmed: addDays(asOf, -daysAgo), runningSince: '2026-10-01', firstConfirmedAt: '2026-10-20' }); // held < 3 months: B
+const aNight = (daysAgo: number): Night => ({ kind: 'standing', lastConfirmed: addDays(asOf, -daysAgo), runningSince: '2024-01-01', firstConfirmedAt: '2025-01-01' }); // held years: A
+
+test('tier B holds 10 days: confirmed 12 days ago it is held out, at 8 it publishes', () => {
+	assert.equal(FRESH_DAYS.B, 10);
+	assert.equal(tierForNight(bNight(8), asOf), 'B');
+	assert.equal(freshOn(bNight(8) as never, asOf), true);
+	assert.equal(freshOn(bNight(12) as never, asOf), false);
+	// …and a rotating night is B however long it has run.
+	assert.equal(freshOn({ ...aNight(12), rotating: true } as never, asOf), false);
+});
+
+test('tier A holds 45 days: at 40 it still publishes, at 50 it does not', () => {
+	assert.equal(freshOn(aNight(40) as never, asOf), true);
+	assert.equal(freshOn(aNight(50) as never, asOf), false);
+});
+
+test('tier C has no window: never confirmed is never publishable — and a one-off’s confirmation doesn’t age', () => {
+	assert.equal(freshOn({ kind: 'standing', lastConfirmed: null, runningSince: '2020-01-01' } as never, asOf), false);
+	const venue = { id: 'v', name: 'V', zone: null, division: null, phone: null };
+	const rows = buildWeek(asOf, [], [
+		{ id: 'old', date: '2026-12-02', venue, residencyId: null, eventName: 'Old', category: 'DJ', startTime: '21:00', prices: [], register: 'SOCIAL', claimType: 'FACTUAL', source: 'OWNER', status: 'CONFIRMED', confirmedOn: '2026-06-01', attendedAt: null, attendedBy: null, clearsF2: null, lineup: [], perks: [] }
+	]);
+	assert.equal(rows[0].state, 'publishable');
+});
+
+test('the week applies the window: a B night confirmed 12 days before the week is a lead, at 8 it publishes', () => {
+	const venue = { id: 'v', name: 'V', zone: null, division: null, phone: null };
+	const night = (daysAgo: number): ResidencyIn => ({
+		id: `n${daysAgo}`, venue, eventName: 'N', category: 'LIVE_BAND', dayOfWeek: 3, startTime: '21:00', prices: [], register: 'SOCIAL', recurrence: 'WEEKLY',
+		claimType: 'FACTUAL', source: 'OWNER', lastConfirmed: addDays(asOf, -daysAgo), runningSince: '2026-10-01', firstConfirmedAt: '2026-10-20',
+		attendedAt: null, attendedBy: null, clearsF2: null, lineup: [], perks: []
+	});
+	assert.deepEqual(buildWeek(asOf, [night(8), night(12)], []).map((r) => [r.key.split('|')[0], r.state]), [['n8', 'publishable'], ['n12', 'lead']]);
+});
+
+test('register health: the weekly need is derived from the book and moves when a night is added', () => {
+	const n = (o: Partial<HealthNight>): HealthNight => ({ ...(bNight(3) as HealthNight), venue: 'V', eventName: 'N', startTime: '21:00', register: 'SOCIAL', ...o });
+	const book = [n({}), n({ lastConfirmed: null }), n({ ...(aNight(20) as object) }), n({ lastConfirmed: addDays(asOf, -30), eventName: 'Stale' })];
+	const h = registerHealth(book, asOf);
+	// Each night's share of a week: 7/10 for B (and C, confirmed into B), 7/45 for A.
+	assert.equal(h.needed, Math.ceil(3 * (7 / 10) + 7 / 45));
+	assert.equal(registerHealth([...book, n({})], asOf).needed, Math.ceil(4 * (7 / 10) + 7 / 45));
+	assert.deepEqual([h.total, h.publishable, h.never, h.last30], [4, 2, 1, 2]); // 30 days ago is outside the last 30
+	assert.equal(h.oldestLapsed?.eventName, 'Stale');
+	assert.equal(h.thisWeek, 0); // Monday 30 Nov: nothing confirmed today
+	assert.equal(h.red, false); //   2 of 4 is half — red is under half
+	assert.equal(registerHealth([...book, n({ lastConfirmed: null })], asOf).red, true);
+});

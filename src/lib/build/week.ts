@@ -4,14 +4,15 @@
 
 import { vouchDay, vouchExpires, vouchExpiry, vouchState } from './vouch.js';
 import { priceLabel, type PriceLabel, type PriceRow } from '../price.js';
+import { freshOn } from '../tier.js';
 
 export type Register = 'CHILL' | 'SOCIAL' | 'HIGH_ENERGY';
 export const REGISTERS: Register[] = ['CHILL', 'SOCIAL', 'HIGH_ENERGY'];
 
 // Rule F5: how long a confirmation stays fresh (a vouch's own 4–6 weeks is in vouch.ts).
 export const F5_WINDOW_DAYS = 28;
-// A standing night stays confirmed for one monthly sweep after its last call.
-export const SWEEP_DAYS = 35;
+// How long a standing night stays confirmed is its tier's window (FRESH_DAYS in
+// lib/tier.ts): 45 days for tier A, 10 for B, none for a night never confirmed.
 
 export interface PerkIn {
 	kind: string;
@@ -65,6 +66,9 @@ export interface ResidencyIn {
 	claimType: string | null;
 	source: string | null;
 	lastConfirmed: string | null; // YYYY-MM-DD
+	runningSince?: string | null; //   for the tier, which sets how long a confirmation holds
+	firstConfirmedAt?: string | null;
+	rotatingAct?: boolean;
 	attendedAt: string | null; // YYYY-MM-DD — the night we were in the room
 	attendedBy: string | null;
 	clearsF2: boolean | null; // Rule F2, judged in the room — gates recommendation, not publication
@@ -225,7 +229,7 @@ export function buildWeek(
 			continue;
 		}
 		const confirmed =
-			r.lastConfirmed != null && daysBetween(r.lastConfirmed, weekStart) <= SWEEP_DAYS;
+			freshOn({ kind: 'standing', lastConfirmed: r.lastConfirmed, runningSince: r.runningSince ?? null, firstConfirmedAt: r.firstConfirmedAt, rotating: r.rotatingAct }, weekStart);
 		rows.push({
 			key: `${r.id}|${date}`,
 			residencyId: r.id,

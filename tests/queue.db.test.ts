@@ -66,7 +66,9 @@ test('group 1: a tier B venue a week past its last confirmation is cadence — w
 		// Venue.tier / nextContactDue are not read: these values would say "A, not due".
 		const v = await venue(tx, 'g1', { conversationTest: 'CAN_TALK', tier: 'A', nextContactDue: new Date(Date.now() + 30 * 86_400_000) });
 		await night(tx, v.id, { lastConfirmed: daysAgo(8), runningSince: daysAgo(30) });
-		assert.deepEqual((await groupsOf(tx, v.id)).queue, ['due']);
+		// Tier B holds 10 days (lib/tier.ts FRESH_DAYS): 8 days old today is lapsed by the
+		// build week, so it's "before publishing" — more urgent than cadence, never off the round.
+		assert.deepEqual((await groupsOf(tx, v.id)).queue, ['this-week']);
 	}));
 
 // A frozen calendar, not today's: whether 31 days old is still inside the

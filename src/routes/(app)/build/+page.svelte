@@ -135,6 +135,26 @@
 		</nav>
 	</header>
 
+	<!-- Register health, always visible: the counter that was missing while the book drained. -->
+	<section class="mx-4 mt-4 rounded-md border border-l-4 px-4 py-3 sm:mx-6 {data.health.red ? 'border-energy/60 border-l-energy bg-energy/10' : 'border-line border-l-vetted bg-panel'}" aria-label="Register health">
+		<h2 class="font-mono text-[11px] tracking-[0.2em] uppercase {data.health.red ? 'text-energy' : 'text-dim'}">Register health</h2>
+		<div class="mt-2 grid gap-x-6 gap-y-2 sm:grid-cols-[auto_1fr]">
+			<!-- The number that governs the rest: confirmations this week against what keeps the book fresh. -->
+			<p class="font-mono text-3xl {data.health.thisWeek < data.health.needed ? 'text-energy' : 'text-vetted'}">
+				{data.health.thisWeek}<span class="text-base text-dim"> / {data.health.needed}</span>
+			</p>
+			<p class="self-center text-sm">
+				confirmed this week — the book needs <strong>{data.health.needed}</strong> a week to stay fresh (each night’s window, derived from its tier)
+			</p>
+		</div>
+		<dl class="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 font-mono text-xs sm:grid-cols-4">
+			<div><dt class="text-dim">Publishable now</dt><dd class={data.health.red ? 'text-energy' : ''}>{data.health.publishable} of {data.health.total} standing nights</dd></div>
+			<div><dt class="text-dim">Never confirmed</dt><dd class={data.health.never ? 'text-social' : ''}>{data.health.never}</dd></div>
+			<div><dt class="text-dim">Confirmed last 30 days</dt><dd>{data.health.last30}</dd></div>
+			<div><dt class="text-dim">Oldest lapsed</dt><dd>{data.health.oldestLapsed ? `${data.health.oldestLapsed.venue}, ${data.health.oldestLapsed.eventName} — ${shortDate(data.health.oldestLapsed.lastConfirmed)}` : 'none'}</dd></div>
+		</dl>
+	</section>
+
 	{#if data.newActs.length}
 		<div class="mx-4 mt-4 rounded-md border border-line bg-panel px-4 py-2 sm:mx-6"><NewActsPrompt names={data.newActs} /></div>
 	{/if}

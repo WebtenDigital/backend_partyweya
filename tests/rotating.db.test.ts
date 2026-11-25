@@ -67,19 +67,20 @@ const save = (venueId: string, f: FormData) =>
 		}
 	);
 
-test('a rotating night held two years is on the cadence round every week; the same night not rotating is monthly', () =>
+test('a rotating night held two years is on the call round every week; the same night not rotating is monthly', () =>
 	rolledBack(async (tx) => {
 		const held = { lastConfirmed: at(addDays(today, -8)), runningSince: at('2024-11-01'), firstConfirmedAt: at('2025-01-10') };
 		const rot = await setup(tx, 'cadence', { ...held, rotatingAct: true });
 		const fixed = await setup(tx, 'cadence-fixed', held);
 		const { queue } = await loadOwed(week, today, tx);
-		assert.deepEqual(queue.filter((q) => q.venue.id === rot.v.id).map((q) => q.group), ['due']);
+		// B holds 10 days, so by the build week it has lapsed: "before publishing", the most urgent group.
+		assert.deepEqual(queue.filter((q) => q.venue.id === rot.v.id).map((q) => q.group), ['this-week']);
 		assert.deepEqual(queue.filter((q) => q.venue.id === fixed.v.id).map((q) => q.group), []); // tier A: not for weeks
 		// And the week after, confirmed by that call, again.
 		const next = addDays(today, 7);
 		await tx.residency.update({ where: { id: rot.r.id }, data: { lastConfirmed: at(addDays(next, -7)) } });
 		const again = await loadOwed(nextMonday(next), next, tx);
-		assert.deepEqual(again.queue.filter((q) => q.venue.id === rot.v.id).map((q) => q.group), ['due']);
+		assert.deepEqual(again.queue.filter((q) => q.venue.id === rot.v.id).map((q) => q.group), ['this-week']);
 	}));
 
 test('"different act every week" keeps the resident act; this week’s act goes on the date, never the rule', () =>

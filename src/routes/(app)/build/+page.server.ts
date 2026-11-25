@@ -9,6 +9,8 @@ import { attendanceTarget, vouchRound } from '#lib/build/vouch.js';
 import { derivedCadence, loadDiscovery, nightCoverage } from '#lib/server/queue.js';
 import { changeVisit, dismissVisit, planVisit, visitsDue, weekVisit } from '#lib/server/visits.js';
 import { failureMessage, oneOf, text } from '#lib/server/forms.js';
+import { registerHealth } from '#lib/server/tier.js';
+import { kampalaDate } from '#lib/server/register.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url }) => {
@@ -56,7 +58,27 @@ export const load: PageServerLoad = async ({ url }) => {
 	});
 
 	const attendance = attendanceTarget(rows, today);
+	// Register health: counted from every active standing night, as of today — not this build's week.
+	const book = await prisma.residency.findMany({
+		where: { active: true },
+		select: { eventName: true, startTime: true, register: true, lastConfirmed: true, runningSince: true, firstConfirmedAt: true, rotatingAct: true, venue: { select: { name: true } } }
+	});
+	const health = registerHealth(
+		book.map((n) => ({
+			kind: 'standing' as const,
+			venue: n.venue.name,
+			eventName: n.eventName,
+			startTime: n.startTime,
+			register: n.register,
+			lastConfirmed: kampalaDate(n.lastConfirmed),
+			runningSince: kampalaDate(n.runningSince),
+			firstConfirmedAt: kampalaDate(n.firstConfirmedAt),
+			rotating: n.rotatingAct
+		})),
+		today
+	);
 	return {
+		health,
 		reminders: nightReminders,
 		newActs,
 		week,
